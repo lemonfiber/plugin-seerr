@@ -1,0 +1,56 @@
+schema_version = 1
+
+[plugin]
+id          = "seerr"
+name        = "Seerr"
+version     = "1.0.0"
+description = "Where the household asks for things"
+without_it  = "Requests come to you in person"
+upstream    = "https://github.com/seerr-team/seerr"
+license     = "MIT"
+forms       = ["library", "full"]
+
+[[service]]
+id          = "seerr"
+name        = "Seerr"
+image       = "ghcr.io/seerr-team/seerr"
+digest      = "sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45"
+tag         = "v3.5.0"
+port        = 5055
+bind        = "lan"
+listens     = 5055
+health      = { kind = "http", path = "/api/v1/status", timeout_s = 90 }
+criticality = "important"
+memory_mib  = 250
+reaches     = "the metadata provider it lists titles from"
+asks_for    = "Reads the catalogue the household browses and requests from, and the artwork beside it."
+provides    = ["request.intake"]
+api         = { kind = "seerr", key_source = "config-json", path = "/app/config/settings.json" }
+config_path = "/app/config"
+user_mode   = "uid"
+replaces    = "seerr"
+
+[service.env]
+LOG_LEVEL = { setting = "seerr:log-level", default = "info" }
+
+[[ask]]
+capability = "identity.source"
+
+[[ask]]
+capability = "library.curate"
+each       = true
+
+[[claim]]
+capability = "request.intake"
+
+[[claim.probe]]
+id      = "identifies"
+request = { method = "GET", path = "/api/v1/status" }
+expect  = { status = 200, json_types = { version = "str", commitTag = "str" } }
+fixture = "recordings/seerr/request-intake-identifies.json"
+
+[[claim.probe]]
+id      = "guarded"
+request = { method = "GET", path = "/api/v1/request" }
+expect  = { status = 401 }
+fixture = "recordings/seerr/request-intake-guarded.json"
