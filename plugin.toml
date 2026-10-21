@@ -40,6 +40,15 @@ capability = "identity.source"
 capability = "library.curate"
 each       = true
 
+[[ask]]
+capability = "request.gate"
+
+[[ask]]
+capability = "proxy.front"
+
+[[ask]]
+capability = "dashboard.show"
+
 [[claim]]
 capability = "request.intake"
 
