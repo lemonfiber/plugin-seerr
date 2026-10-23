@@ -13,7 +13,7 @@
     },
     "json": {
       "type": "refused",
-      "detail": "HTTP 502: {\"message\":\"INVALID_URL\"}"
+      "detail": "HTTP 502: INVALID_URL"
     }
   }
 }

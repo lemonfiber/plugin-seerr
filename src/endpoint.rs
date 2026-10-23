@@ -7,6 +7,8 @@ const DETAIL_LIMIT: usize = 200;
 
 const MARKER: &str = "...";
 
+const SAID_IN: [&str; 2] = ["message", "error"];
+
 /// A value written as one query parameter's value: every byte but the unreserved ones
 /// percent-encoded.
 pub fn query_encoded(value: &str) -> String {
@@ -105,14 +107,29 @@ impl Endpoint {
         if !response.is_success() {
             return Err(self.refusal(response));
         }
-        serde_json::from_str(&response.body).map_err(|err| self.refused(&format!("{what}: {err}")))
+        serde_json::from_str(&response.body).map_err(|err| {
+            self.refused(&format!(
+                "{what}: the answer is not in the shape expected at line {} column {}",
+                err.line(),
+                err.column()
+            ))
+        })
     }
 }
 
 /// A non-success response as a refusal's detail: the service's own words, withheld and
-/// then shortened, or its status alone where it said none.
+/// then shortened, or its status alone where it said none. From a JSON answer only the
+/// words it says under `message` or `error` are taken, never the fields beside them.
 pub fn describe(response: &Response) -> String {
-    let body = lemonfiber_error::withheld::withheld_text(response.body.trim());
+    let said = match serde_json::from_str::<serde_json::Value>(&response.body) {
+        Ok(answer) => SAID_IN
+            .iter()
+            .find_map(|field| answer.get(field).and_then(serde_json::Value::as_str))
+            .unwrap_or_default()
+            .to_owned(),
+        Err(_) => response.body.clone(),
+    };
+    let body = lemonfiber_error::withheld::withheld_text(said.trim());
     let body = body.trim();
     if body.is_empty() {
         format!("HTTP {}", response.status)

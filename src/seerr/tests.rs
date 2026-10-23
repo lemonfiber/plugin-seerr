@@ -243,13 +243,30 @@ mod client {
             "http://",
             "http://:8096",
             "http://jellyfin:x",
+            "http://jellyfin:0",
+            "http://admin:a-password@jellyfin",
+            "http://evil.example@jellyfin:8096",
+            "http://jellyfin:8096@evil.example",
+            "http://jellyfin?evil.example",
+            "http://jellyfin/media?x=1",
+            "http://jellyfin/media#x",
+            "http://jellyfin/../settings",
+            "http://jellyfin//media",
+            "http://jellyfin\\@evil.example",
+            "http://[fd00::7",
+            "http://[fd00::7]x",
+            "http://[evil.example]",
+            "http://-jellyfin",
+            "http://jelly fin",
         ] {
             let (seerr, http) = scripted(Vec::new());
-            assert!(matches!(
-                seerr.configure_identity(&source(at)).await,
-                Err(Failure::Refused { .. })
-            ));
-            assert!(http.requests().is_empty());
+            let refused = seerr.configure_identity(&source(at)).await;
+            assert!(
+                matches!(&refused, Err(Failure::Refused { detail, .. })
+                    if !detail.contains("a-password") && !detail.contains("evil")),
+                "{at}"
+            );
+            assert!(http.requests().is_empty(), "{at}");
         }
         let (refused, _) = scripted(vec![(401, "")]);
         assert!(refused
@@ -371,18 +388,112 @@ mod client {
         let (seerr, _) = scripted(vec![(500, r#"{"message":"Unable to retrieve movie."}"#)]);
         assert!(
             matches!(seerr.telling().await, Err(Failure::Refused { detail, .. })
-            if detail == r#"HTTP 500: {"message":"Unable to retrieve movie."}"#)
+            if detail == "HTTP 500: Unable to retrieve movie.")
         );
         let (seerr, _) = scripted(vec![(404, r#"{"message":"User not found."}"#)]);
         assert!(
             matches!(seerr.remove_member("9").await, Err(Failure::Refused { detail, .. })
-            if detail == r#"HTTP 404: {"message":"User not found."}"#)
+            if detail == "HTTP 404: User not found.")
         );
         let (seerr, _) = scripted(vec![(403, "")]);
         assert!(matches!(
             seerr.telling().await,
             Err(Failure::Unauthorised { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn seerr_s_json_answers_lend_a_refusal_only_their_message_never_the_fields_beside_it() {
+        let (seerr, _) = scripted(vec![(
+            400,
+            r#"{"message":"bad","settings":{"password":"a-password-held"}}"#,
+        )]);
+        assert!(
+            matches!(seerr.telling().await, Err(Failure::Refused { detail, .. })
+            if detail == "HTTP 400: bad")
+        );
+        let (seerr, _) = scripted(vec![(400, r#"{"settings":{"apiKey":"a-key-held"}}"#)]);
+        assert!(
+            matches!(seerr.telling().await, Err(Failure::Refused { detail, .. })
+            if detail == "HTTP 400")
+        );
+        let (seerr, _) = scripted(vec![(500, r#"{"status":500,"error":"Seerr fell over"}"#)]);
+        assert!(
+            matches!(seerr.telling().await, Err(Failure::Refused { detail, .. })
+            if detail == "HTTP 500: Seerr fell over")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_answer_in_the_wrong_shape_is_refused_without_quoting_what_it_held() {
+        let (seerr, _) = scripted(vec![(
+            200,
+            r#"{"ip":"jellyfin","port":8096,"apiKey":["a-key-held-in-a-list"]}"#,
+        )]);
+        assert!(
+            matches!(seerr.media_server_link().await, Err(Failure::Refused { detail, .. })
+            if !detail.contains("a-key-held") && detail.contains("line 1 column"))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_address_seerr_would_read_otherwise_is_refused_before_anything_is_written() {
+        let misread = [
+            ("admin:pw@sonarr", ""),
+            ("sonarr?x", ""),
+            ("sonarr/x", ""),
+            ("", ""),
+            ("sonarr", "media"),
+            ("sonarr", "/media/"),
+            ("sonarr", "/../settings"),
+            ("sonarr", "/media?x=1"),
+            ("sonarr", "/me dia"),
+        ];
+        for (host, base) in misread {
+            let at = Endpoint {
+                host: host.to_owned(),
+                port: 8989,
+                base: base.to_owned(),
+            };
+            let held = RegisteredTarget {
+                id: "2".to_owned(),
+                at: at.clone(),
+                key: "k".to_owned(),
+                kind: Kind::Tv,
+            };
+            let mut target = a_target(Kind::Tv);
+            target.at = at.clone();
+            let (seerr, http) = scripted(Vec::new());
+            assert!(seerr.link_media_server(&at, "k").await.is_err());
+            assert!(seerr.add_fulfilment_target(&target).await.is_err());
+            assert!(seerr.move_fulfilment_target(&held, &at, "k").await.is_err());
+            assert!(seerr
+                .test_fulfilment_target(Kind::Tv, &at, "k")
+                .await
+                .is_err());
+            assert!(http.requests().is_empty(), "{host} {base}");
+        }
+        let mut closed = at();
+        closed.port = 0;
+        let (seerr, http) = scripted(Vec::new());
+        assert!(seerr.link_media_server(&closed, "k").await.is_err());
+        assert!(http.requests().is_empty());
+        for (host, base) in [
+            ("[fd00::7]", "/media/v2"),
+            ("10.0.0.7", ""),
+            ("sonarr.lan", "/a-b_c.d~e"),
+        ] {
+            let fine = Endpoint {
+                host: host.to_owned(),
+                port: 8989,
+                base: base.to_owned(),
+            };
+            let (seerr, _) = scripted(vec![(200, "{}")]);
+            assert!(
+                seerr.link_media_server(&fine, "k").await.is_ok(),
+                "{host} {base}"
+            );
+        }
     }
 
     #[tokio::test]

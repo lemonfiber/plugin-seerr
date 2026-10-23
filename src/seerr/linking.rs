@@ -39,6 +39,7 @@ pub(super) async fn link_media_server(
     at: &Endpoint,
     key: &str,
 ) -> Result<(), Failure> {
+    seerr.held_to_an_address(at)?;
     let body = serde_json::json!({
         "ip": at.host,
         "port": at.port,

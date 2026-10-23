@@ -69,6 +69,13 @@ const IDENTITY_DASHES: usize = 4;
 
 const WEBPUSH: &str = "/settings/notifications/webpush";
 
+const LONGEST_HOST: usize = 253;
+
+const BASE_MARKS: &[u8] = b"-._~/";
+
+const NOT_AN_ADDRESS: &str =
+    "that is not an address Seerr can be told: a host, a port and a plain path";
+
 struct Reached<'a> {
     secure: bool,
     host: &'a str,
@@ -81,21 +88,68 @@ fn taken_apart(server_url: &str) -> Option<Reached<'_>> {
         .strip_prefix("https://")
         .map(|rest| (true, rest))
         .or_else(|| server_url.strip_prefix("http://").map(|rest| (false, rest)))?;
-    let (authority, base) = match rest.split_once('/') {
-        Some((authority, path)) => (authority, format!("/{path}")),
-        None => (rest, String::new()),
-    };
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
     let assumed = if secure { SECURE } else { PLAIN };
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((host, port)) if !port.ends_with(']') => (host, port.parse().ok()?),
-        _ => (authority, assumed),
+    let (host, port) = if authority.starts_with('[') {
+        let (host, after) = authority.split_at(authority.find(']')? + 1);
+        let port = if after.is_empty() {
+            assumed
+        } else {
+            after.strip_prefix(':')?.parse().ok()?
+        };
+        (host, port)
+    } else {
+        match authority.split_once(':') {
+            Some((host, port)) => (host, port.parse().ok()?),
+            None => (authority, assumed),
+        }
     };
-    (!host.is_empty()).then_some(Reached {
+    let path = path.trim_end_matches('/');
+    let base = if path.is_empty() {
+        String::new()
+    } else {
+        format!("/{path}")
+    };
+    an_address(host, port, &base).then_some(Reached {
         secure,
         host,
         port,
         base,
     })
+}
+
+fn an_address(host: &str, port: u16, base: &str) -> bool {
+    port != 0 && a_host(host) && a_base(base)
+}
+
+fn a_host(host: &str) -> bool {
+    if let Some(inside) = host
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    {
+        return inside.contains(':')
+            && inside
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() || byte == b':' || byte == b'.');
+    }
+    (1..=LONGEST_HOST).contains(&host.len())
+        && !host.starts_with(['-', '.'])
+        && host
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
+}
+
+fn a_base(base: &str) -> bool {
+    base.is_empty()
+        || (base.starts_with('/')
+            && !base.ends_with('/')
+            && base
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || BASE_MARKS.contains(&byte))
+            && base
+                .split('/')
+                .skip(1)
+                .all(|segment| !matches!(segment, "" | "." | "..")))
 }
 
 fn telling(enabled: bool, bits: u32) -> Telling {
@@ -202,9 +256,7 @@ impl Seerr {
         server_url: &str,
     ) -> Result<(), Failure> {
         let Some(jellyfin) = taken_apart(server_url) else {
-            return Err(self.endpoint.refused(&format!(
-                "the identity source's address is not one Seerr can be told: {server_url}"
-            )));
+            return Err(self.endpoint.refused(NOT_AN_ADDRESS));
         };
         let body = serde_json::json!({
             "username": username,
@@ -394,6 +446,14 @@ impl Requests for Seerr {
 }
 
 impl Seerr {
+    fn held_to_an_address(&self, at: &lemonfiber_ports::service::Endpoint) -> Result<(), Failure> {
+        if an_address(&at.host, at.port, &at.base) {
+            Ok(())
+        } else {
+            Err(self.endpoint.refused(NOT_AN_ADDRESS))
+        }
+    }
+
     fn member_path(&self, id: &str) -> Result<String, Failure> {
         if (1..=LONGEST_NUMBER).contains(&id.len()) && id.bytes().all(|byte| byte.is_ascii_digit())
         {

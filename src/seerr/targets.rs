@@ -62,6 +62,7 @@ pub(super) async fn add_fulfilment_target(
     seerr: &Seerr,
     target: &FulfilmentTarget,
 ) -> Result<(), Failure> {
+    seerr.held_to_an_address(&target.at)?;
     let differs = if target.kind == Kind::Tv {
         ("enableSeasonFolders", serde_json::json!(true))
     } else {
@@ -98,6 +99,7 @@ pub(super) async fn move_fulfilment_target(
     at: &Endpoint,
     key: &str,
 ) -> Result<(), Failure> {
+    seerr.held_to_an_address(at)?;
     let path = list(held.kind);
     let response = seerr.send(Method::Get, path, None).await?;
     let listed: Vec<serde_json::Map<String, serde_json::Value>> = seerr
@@ -136,6 +138,7 @@ pub(super) async fn test_fulfilment_target(
     at: &Endpoint,
     key: &str,
 ) -> Result<(), Failure> {
+    seerr.held_to_an_address(at)?;
     let path = list(kind);
     let body = serde_json::json!({
         "hostname": at.host,

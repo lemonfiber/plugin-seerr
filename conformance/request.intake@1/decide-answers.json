@@ -13,7 +13,7 @@
     },
     "json": {
       "type": "refused",
-      "detail": "HTTP 404: {\"message\":\"Request not found.\"}"
+      "detail": "HTTP 404: Request not found."
     }
   }
 }

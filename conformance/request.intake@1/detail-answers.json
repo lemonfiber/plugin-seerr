@@ -13,7 +13,7 @@
     },
     "json": {
       "type": "refused",
-      "detail": "HTTP 500: {\"message\":\"Unable to retrieve movie.\"}"
+      "detail": "HTTP 500: Unable to retrieve movie."
     }
   }
 }
