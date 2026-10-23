@@ -3,14 +3,14 @@
   "against": "recordings",
   "proofs": [
     {
-      "id": "request.intake/identifies",
-      "kind": "probe",
+      "id": "seerr.identifies",
+      "kind": "proof",
       "outcome": "passed",
       "detail": ""
     },
     {
-      "id": "request.intake/guarded",
-      "kind": "probe",
+      "id": "seerr.guarded",
+      "kind": "proof",
       "outcome": "passed",
       "detail": ""
     }

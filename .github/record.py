@@ -15,9 +15,10 @@ source, so the throwaway Seerr is given the owner that sign-in makes, and the
 member the contract's cases ask about, before the adapter starts. The adapter runs from this repository's Dockerfile, as
 lemonfiber runs it: the caller's uid, read-only, no capabilities, the key and
 the upstream credential owner-only in its configuration directory. This script
-stands where lemonfiber stands: it reads the key Seerr wrote to `main.apiKey`
-in `settings.json` on its first start, writes it to the adapter's
-`upstream.json` beside `lemonfiber.key`, and asks.
+stands where lemonfiber stands: it mints every secret `plugin.toml` declares
+`minted`, hands each to Seerr through the environment its `env` names it in,
+from a file only its owner reads, writes the adapter's `upstream.json` as the
+adapter's `upstream` maps its fields to those secrets, and asks.
 
     python3 .github/record.py            write conformance/
     python3 .github/record.py --check    record again and compare
@@ -54,8 +55,6 @@ ANSWER_S = 30
 ADAPTER_PORT = 8080
 SEGMENT = re.compile(r"[a-z][a-z0-9_.]*")
 MAJOR = re.compile(r"[1-9]\d*")
-API_KEY = "api_key"
-SETTINGS = "settings.json"
 DATABASE = pathlib.Path("db") / "db.sqlite3"
 CONFIG = "/app/config"
 STATUS = "/api/v1/status"
@@ -110,12 +109,20 @@ def docker(*args: str, check: bool = True) -> str:
     return done.stdout.strip()
 
 
-def manifest() -> tuple[str, str, int]:
-    """The plugin's own service: its id, its pinned image and the port it listens on."""
+def manifest() -> tuple[str, str, int, dict[str, str], dict[str, str], dict[str, str]]:
+    """The plugin's own service: its id, its pinned image and the port it listens on; a
+    value minted for each secret declared `minted`; the secret each field of the
+    adapter's `upstream.json` holds; and the secret each of the service's environment
+    variables holds."""
     read = tomllib.loads((ROOT / "plugin.toml").read_text(encoding="utf-8"))
     plugin = read["plugin"]["id"]
     upstream = next(one for one in read["service"] if one["id"] == plugin)
-    return plugin, f"{upstream['image']}@{upstream['digest']}", upstream["listens"]
+    adapter = next(one for one in read["service"] if one.get("fronts") == plugin)
+    minted = {one["id"]: secrets.token_hex(16) for one in read.get("secret", []) if one.get("minted")}
+    fields = {field: held["secret"] for field, held in adapter.get("upstream", {}).items()}
+    env = {name: held["secret"] for name, held in upstream.get("env", {}).items()
+           if isinstance(held, dict) and "secret" in held}
+    return plugin, f"{upstream['image']}@{upstream['digest']}", upstream["listens"], minted, fields, env
 
 
 def core_rev() -> str:
@@ -160,16 +167,6 @@ def recording(pinned: str, path: str, status: int, kind: str, body: str, note: s
     }
 
 
-def generated_key(settings: pathlib.Path) -> str | None:
-    """The key Seerr wrote to `main.apiKey` on its first start, as lemonfiber reads it."""
-    try:
-        held = json.loads(settings.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    key = held.get("main", {}).get("apiKey") if isinstance(held, dict) else None
-    return key if isinstance(key, str) and key else None
-
-
 def member_id() -> str:
     """The identity-source member the contract's cases link and ask about."""
     return next(case["asked"]["media_server_id"] for case in published_cases(INTAKE)
@@ -206,7 +203,8 @@ def waited(what: str, ready) -> object:
     raise RuntimeError(f"{what} within {STARTUP_S}s")
 
 
-def recorded_live(plugin: str, pinned: str, listens: int) -> tuple[list[str], dict[tuple[str, str], dict | str]]:
+def recorded_live(plugin: str, pinned: str, listens: int, minted: dict[str, str], fields: dict[str, str],
+                  env: dict[str, str]) -> tuple[list[str], dict[tuple[str, str], dict | str]]:
     """What the adapter speaks, and every case asked of it in front of a throwaway Seerr."""
     name = f"{plugin}-record-{uuid.uuid4().hex[:8]}"
     inside, outside = f"{name}-inside", f"{name}-outside"
@@ -214,22 +212,25 @@ def recorded_live(plugin: str, pinned: str, listens: int) -> tuple[list[str], di
     with tempfile.TemporaryDirectory() as held:
         held = pathlib.Path(held)
         upstream, adapter = held / "upstream", held / "adapter"
-        for directory in (upstream, adapter):
-            directory.mkdir()
+        upstream.mkdir()
+        adapter.mkdir()
+        given = held / "upstream.env"
+        given.write_text("".join(f"{name}={minted[secret]}\n" for name, secret in env.items()), encoding="utf-8")
+        given.chmod(0o600)
         try:
             docker("network", "create", "--internal", inside)
             docker("network", "create", outside)
             docker("run", "-d", "--name", f"{name}-upstream", "--network", inside,
                    "--network-alias", plugin, "--user", f"{os.getuid()}:{os.getgid()}",
-                   "-e", "TZ=Etc/UTC", "-v", f"{upstream}:{CONFIG}", pinned)
-            api_key = waited("Seerr wrote no key", lambda: generated_key(upstream / SETTINGS))
+                   "-e", "TZ=Etc/UTC", "--env-file", str(given), "-v", f"{upstream}:{CONFIG}", pinned)
             waited("Seerr did not answer", lambda: answers_status(f"{name}-upstream", listens))
             docker("stop", f"{name}-upstream")
             owned(upstream / DATABASE)
             docker("start", f"{name}-upstream")
             waited("Seerr did not answer again", lambda: answers_status(f"{name}-upstream", listens))
             (adapter / "lemonfiber.key").write_text(key, encoding="utf-8")
-            (adapter / "upstream.json").write_text(json.dumps({API_KEY: api_key}), encoding="utf-8")
+            (adapter / "upstream.json").write_text(
+                json.dumps({field: minted[secret] for field, secret in fields.items()}), encoding="utf-8")
             owner_only(adapter)
             docker("build", "-q", "-t", f"{name}:adapter", str(ROOT))
             docker("create", "--name", f"{name}-adapter", "--network", outside,
@@ -244,7 +245,7 @@ def recorded_live(plugin: str, pinned: str, listens: int) -> tuple[list[str], di
             speaks = json.loads(asked(base, "/lemonfiber/adapter/v1/about", key)[2])["speaks"]
             said, made = recorded(base, key, pinned, speaks, adapter / "upstream.json")
             leaked = [case for case, one in said.items() if isinstance(one, dict)
-                      if any(secret in json.dumps(one) for secret in (api_key, key, *made)
+                      if any(secret in json.dumps(one) for secret in (key, *minted.values(), *made)
                              if len(secret) >= SCRUBBED_WITHIN)]
             if leaked:
                 raise RuntimeError(f"an answer holds a credential, so nothing is written: {leaked}")
@@ -404,8 +405,8 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="record again and compare with conformance/")
     checking = parser.parse_args().check
 
-    plugin, pinned, listens = manifest()
-    speaks, said = recorded_live(plugin, pinned, listens)
+    plugin, pinned, listens, minted, fields, env = manifest()
+    speaks, said = recorded_live(plugin, pinned, listens, minted, fields, env)
     faults = [fault for spoken in speaks for case in published_cases(spoken)
               if (fault := filed(said, spoken, case["case"], checking)) is not None]
     for fault in faults:

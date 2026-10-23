@@ -24,42 +24,79 @@ criticality = "important"
 memory_mib  = 250
 reaches     = "the metadata provider it lists titles from"
 asks_for    = "Reads the catalogue the household browses and requests from, and the artwork beside it."
-provides    = ["request.intake"]
-api         = { kind = "seerr", key_source = "config-json", path = "/app/config/settings.json" }
 config_path = "/app/config"
 user_mode   = "uid"
 replaces    = "seerr"
 
 [service.env]
 LOG_LEVEL = { setting = "seerr:log-level", default = "info" }
+API_KEY   = { secret = "upstream-key" }
+
+[[service]]
+id          = "seerr-adapter"
+name        = "Seerr adapter"
+image       = "ghcr.io/lemonfiber/seerr-adapter"
+digest      = "sha256:106f785bfa62c5f88fa3f887cc5da5818b3af4ebb75f111b880a7c7a453a76f6"
+tag         = "main-02bc0ce2fbf0"
+criticality = "important"
+reaches     = ""
+asks_for    = "Nothing beyond this machine. It answers lemonfiber's request.intake contract by calling Seerr, beside it, with the key lemonfiber minted for it."
+config_path = "/config"
+listens     = 8080
+speaks      = ["request.intake@1"]
+fronts      = "seerr"
+provides    = ["request.intake"]
+upstream    = { api_key = { secret = "upstream-key" } }
+
+[[secret]]
+id     = "upstream-key"
+of     = "seerr"
+minted = true
+why    = "The key Seerr answers its API to, which the adapter in front of it presents"
+
+[[proof]]
+id      = "seerr.identifies"
+service = "seerr"
+title   = "Seerr says which release it is to anybody"
+fixture = "recordings/seerr/status-identifies.json"
+why     = """
+Seerr is the one service a household member reaches without being an
+operator, so it answers before anybody signs in, and the adapter's readiness
+is this answer.
+"""
+request = { method = "GET", path = "/api/v1/status" }
+expect  = { status = 200, json_types = { version = "str", commitTag = "str" } }
+
+[[proof]]
+id      = "seerr.guarded"
+service = "seerr"
+title   = "Seerr lists the household's requests to nobody presenting nothing"
+fixture = "recordings/seerr/requests-guarded.json"
+why     = """
+The requests name what each member asked for. Only the adapter asks, with the
+key lemonfiber minted, so a Seerr that listed them to a caller presenting
+nothing would be telling every device that can reach it.
+"""
+request = { method = "GET", path = "/api/v1/request" }
+expect  = { status = 401 }
 
 [[ask]]
+service    = "seerr"
 capability = "identity.source"
 
 [[ask]]
+service    = "seerr"
 capability = "library.curate"
 each       = true
 
 [[ask]]
+service    = "seerr"
 capability = "request.gate"
 
 [[ask]]
+service    = "seerr"
 capability = "proxy.front"
 
 [[ask]]
+service    = "seerr"
 capability = "dashboard.show"
-
-[[claim]]
-capability = "request.intake"
-
-[[claim.probe]]
-id      = "identifies"
-request = { method = "GET", path = "/api/v1/status" }
-expect  = { status = 200, json_types = { version = "str", commitTag = "str" } }
-fixture = "recordings/seerr/request-intake-identifies.json"
-
-[[claim.probe]]
-id      = "guarded"
-request = { method = "GET", path = "/api/v1/request" }
-expect  = { status = 401 }
-fixture = "recordings/seerr/request-intake-guarded.json"
