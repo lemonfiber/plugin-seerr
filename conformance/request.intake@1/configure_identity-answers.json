@@ -1,0 +1,19 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "An identity source Seerr cannot sign in through: refused before Seerr is asked.",
+  "request": {
+    "method": "POST",
+    "path": "/lemonfiber/request.intake/v1/configure_identity",
+    "accept": "application/json"
+  },
+  "response": {
+    "status": 500,
+    "headers": {
+      "content-type": "application/problem+json"
+    },
+    "json": {
+      "type": "unsupported",
+      "detail": "it signs a household in through no identity source spoken to as conformance"
+    }
+  }
+}

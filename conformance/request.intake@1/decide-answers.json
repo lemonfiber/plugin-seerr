@@ -1,0 +1,19 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "Seerr holds no request numbered 0: refused.",
+  "request": {
+    "method": "POST",
+    "path": "/lemonfiber/request.intake/v1/decide",
+    "accept": "application/json"
+  },
+  "response": {
+    "status": 500,
+    "headers": {
+      "content-type": "application/problem+json"
+    },
+    "json": {
+      "type": "refused",
+      "detail": "HTTP 404: {\"message\":\"Request not found.\"}"
+    }
+  }
+}
