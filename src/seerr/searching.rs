@@ -290,7 +290,7 @@ async fn ask(seerr: &Seerr, member: &str, wish: &Wish) -> Result<Asked, Failure>
     let (Some(media), Some(user)) = (number(&wish.id), number(member)) else {
         return Err(seerr
             .endpoint
-            .refused("the title or the member is not one the service names"));
+            .refused("the title or the member is not one Seerr names"));
     };
     let filing = Filing {
         media_type: media_type(wish.kind),

@@ -209,11 +209,19 @@ mod client {
                 body.contains(r#""port":80"#) && body.contains(r#""urlBase":"""#)
             })
         }));
-        let (named, _) = scripted(vec![(200, "{}"), (200, "{}")]);
-        assert!(named
-            .configure_identity(&source("http://jellyfin:x"))
+        let (bracketed, http) = scripted(vec![(200, "{}"), (200, "{}")]);
+        assert!(bracketed
+            .configure_identity(&source("http://[fd00::7]"))
             .await
             .is_ok());
+        assert!(http
+            .requests()
+            .first()
+            .is_some_and(|one| one
+                .body
+                .as_deref()
+                .is_some_and(|body| body.contains(r#""hostname":"[fd00::7]""#)
+                    && body.contains(r#""port":80"#))));
     }
 
     #[tokio::test]
@@ -230,7 +238,12 @@ mod client {
             ));
             assert!(http.requests().is_empty());
         }
-        for at in ["ftp://jellyfin", "http://", "http://:8096"] {
+        for at in [
+            "ftp://jellyfin",
+            "http://",
+            "http://:8096",
+            "http://jellyfin:x",
+        ] {
             let (seerr, http) = scripted(Vec::new());
             assert!(matches!(
                 seerr.configure_identity(&source(at)).await,
@@ -351,6 +364,25 @@ mod client {
             assert!(seerr.hold_requests(misshapen).await.is_err());
             assert!(http.requests().is_empty(), "{misshapen:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn what_seerr_refuses_is_refused_in_its_own_words_and_a_refused_key_is_unauthorised() {
+        let (seerr, _) = scripted(vec![(500, r#"{"message":"Unable to retrieve movie."}"#)]);
+        assert!(
+            matches!(seerr.telling().await, Err(Failure::Refused { detail, .. })
+            if detail == r#"HTTP 500: {"message":"Unable to retrieve movie."}"#)
+        );
+        let (seerr, _) = scripted(vec![(404, r#"{"message":"User not found."}"#)]);
+        assert!(
+            matches!(seerr.remove_member("9").await, Err(Failure::Refused { detail, .. })
+            if detail == r#"HTTP 404: {"message":"User not found."}"#)
+        );
+        let (seerr, _) = scripted(vec![(403, "")]);
+        assert!(matches!(
+            seerr.telling().await,
+            Err(Failure::Unauthorised { .. })
+        ));
     }
 
     #[tokio::test]

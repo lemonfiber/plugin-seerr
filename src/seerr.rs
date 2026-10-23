@@ -87,10 +87,8 @@ fn taken_apart(server_url: &str) -> Option<Reached<'_>> {
     };
     let assumed = if secure { SECURE } else { PLAIN };
     let (host, port) = match authority.rsplit_once(':') {
-        Some((host, port)) => port
-            .parse()
-            .map_or((authority, assumed), |port| (host, port)),
-        None => (authority, assumed),
+        Some((host, port)) if !port.ends_with(']') => (host, port.parse().ok()?),
+        _ => (authority, assumed),
     };
     (!host.is_empty()).then_some(Reached {
         secure,
@@ -346,7 +344,7 @@ impl Requests for Seerr {
         Ok(self
             .member(
                 media_server_id,
-                "the account this service holds could not be read",
+                "the account Seerr holds for them could not be read",
             )
             .await?
             .map(|held| held.id.to_string()))
