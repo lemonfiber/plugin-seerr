@@ -1,0 +1,18 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "That member's asking taken away, and what was taken said.",
+  "request": {
+    "method": "POST",
+    "path": "/lemonfiber/request.intake/v1/hold_requests",
+    "accept": "application/json"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "taken": 32
+    }
+  }
+}

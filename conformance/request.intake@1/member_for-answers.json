@@ -1,0 +1,16 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "The account Seerr holds for the member the case names.",
+  "request": {
+    "method": "POST",
+    "path": "/lemonfiber/request.intake/v1/member_for",
+    "accept": "application/json"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": "2"
+  }
+}

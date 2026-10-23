@@ -1,0 +1,16 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "The household's notice written to Seerr's discover page.",
+  "request": {
+    "method": "POST",
+    "path": "/lemonfiber/request.intake/v1/set_notices",
+    "accept": "application/json"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body_starts_with": "null"
+  }
+}

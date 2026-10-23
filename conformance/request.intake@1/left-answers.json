@@ -1,0 +1,27 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "What that member has left to ask for under the household's quota.",
+  "request": {
+    "method": "POST",
+    "path": "/lemonfiber/request.intake/v1/left",
+    "accept": "application/json"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "json": {
+      "films": {
+        "limit": 5,
+        "used": 0,
+        "days": 7
+      },
+      "television": {
+        "limit": 5,
+        "used": 0,
+        "days": 7
+      }
+    }
+  }
+}

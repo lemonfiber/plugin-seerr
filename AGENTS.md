@@ -9,21 +9,48 @@
 
 ## What this repo is
 
-A bundled part: Seerr, as the stack lemonfiber ships carries it. The
+Seerr as a first-party lemonfiber plugin: `plugin.toml` and the adapter that
+speaks the `request.intake@1` contract in front of Seerr. The adapter is the Rust crate at the root, built on
+`lemonfiber-adapter-kit` from the core at the commit `Cargo.toml` pins, into the
+image the `Dockerfile` builds. `release.yml` publishes that image from every
+commit on `main` and from the train's tag. The
 [bundle contract](https://github.com/lemonfiber/spec/blob/main/20-architecture/contracts/bundle.md)
-says how the catalogue pins it and how lemonfiber carries it.
+says how the catalogue pins this repository and how lemonfiber carries it.
+
+`conformance/` holds one recording per case of the contract the adapter speaks,
+written by `.github/record.py` against a throwaway Seerr at the digest
+`plugin.toml` pins. Re-record whenever the adapter's answers or that digest
+change. `tests/conformance.rs` reads every recording with the core's own client.
 
 ## The rules you cannot break
 
 - **The plugin id is the service's id** (`ARCH-R266`). The container, the
   configuration directory, the settings and the journal keep their names.
-- **One service, speaking no contract**, while the bundle assembles it. It
-  declares `replaces` naming its own id, which is how it takes the id, the port
-  and the hostname the bundle reserves for it (`ARCH-R222`).
-- **Its claims' recordings sit under `recordings/seerr/`**, and its starting
-  files, where it has any, under `config/seerr/` (`ARCH-R271`).
+- **Its claims' and proofs' recordings sit under `recordings/seerr/`**, and its
+  starting files under `config/seerr/` (`ARCH-R271`).
 - **Every service declares `reaches` and `asks_for`** (`ARCH-R270`).
-- **No Python here.** The reader is spec's `first-party-plugin` workflow's.
-- **The image is Seerr's own**, so this repository is never tagged. Moving
-  the digest means recording every response again against the new image in
-  the same change, and committing the `proofs.json` the checks write.
+- **The reader is spec's `first-party-plugin` workflow's.** The one Python here
+  is `.github/record.py`, CI harness that records the conformance cases.
+- **No `unwrap`, `expect`, `panic` or indexing** outside tests. The lints in
+  `Cargo.toml` are the core's.
+- **Every value the core sends is held to its shape** before it is written into
+  a query or a path.
+- **The adapter never writes its credential.** lemonfiber writes `upstream.json`
+  into the adapter's configuration directory, holding the key Seerr answers to
+  as `api_key`; the adapter reads it for every call and never logs it.
+- **The core's crates move with the train.** The `rev` in `Cargo.toml` is the
+  core commit `targets.toml` names, the same for every `lemonfiber-*` crate.
+- **Moving Seerr's digest** means recording every response and conformance
+  case again against the new image in the same change, moving `RELEASE` and
+  `DIGEST` in `src/adapter.rs` with it, and committing the `proofs.json` the
+  checks write.
+
+## Checks
+
+```
+just ci
+```
+
+The gates that need nothing but this tree. The plugin verdict and the
+conformance recordings run in CI; `just recordings` takes the recordings again
+locally, with Docker.

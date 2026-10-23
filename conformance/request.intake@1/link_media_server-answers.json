@@ -1,0 +1,19 @@
+{
+  "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
+  "note": "Seerr refuses an identity source it cannot reach.",
+  "request": {
+    "method": "POST",
+    "path": "/lemonfiber/request.intake/v1/link_media_server",
+    "accept": "application/json"
+  },
+  "response": {
+    "status": 500,
+    "headers": {
+      "content-type": "application/problem+json"
+    },
+    "json": {
+      "type": "refused",
+      "detail": "HTTP 502: INVALID_URL"
+    }
+  }
+}
