@@ -5,6 +5,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use lemonfiber_adapter_kit::credential::Holding;
+use lemonfiber_adapter_kit::endpoint::Endpoint;
 use lemonfiber_ports::http::{Http, Method, Request, Response, JSON};
 use lemonfiber_ports::media::Kind;
 use lemonfiber_ports::service::{
@@ -12,9 +14,6 @@ use lemonfiber_ports::service::{
     Occasion, RegisteredTarget, Requesting, Requests, Telling,
 };
 use serde::Deserialize;
-
-use crate::credential::Holding;
-use crate::endpoint::Endpoint;
 
 mod addressing;
 mod asking;
@@ -249,21 +248,6 @@ impl Seerr {
         self.endpoint.send(&request).await
     }
 
-    fn administrator<'a>(&self, source: &'a IdentitySource) -> Result<(&'a str, &'a str), Failure> {
-        if source.protocol.0 != JELLYFIN {
-            return Err(self.endpoint.unsupported(&format!(
-                "it signs a household in through no identity source spoken to as {}",
-                source.protocol.0
-            )));
-        }
-        let Credential::UserPass { username, password } = &source.credential else {
-            return Err(self
-                .endpoint
-                .unsupported("it signs a household in by an administrator's name and password"));
-        };
-        Ok((username, password))
-    }
-
     async fn signed_in_naming(
         &self,
         username: &str,
@@ -324,12 +308,12 @@ impl Requests for Seerr {
         if Requests::answers(self).await.is_ok() {
             return Ok(());
         }
-        let (username, password) = self.administrator(source)?;
+        let (username, password) = administrator(source)?;
         self.signed_in_naming(username, password, &source.at).await
     }
 
     async fn configure_identity(&self, source: &IdentitySource) -> Result<(), Failure> {
-        let (username, password) = self.administrator(source)?;
+        let (username, password) = administrator(source)?;
         self.signed_in_naming(username, password, &source.at)
             .await?;
         let finished = self
@@ -509,6 +493,31 @@ fn an_identity(id: &str) -> bool {
         && id
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+}
+
+/// The administrator's name and password Seerr signs a household in through, from a
+/// Jellyfin identity source.
+fn administrator(source: &IdentitySource) -> Result<(&str, &str), Failure> {
+    if source.protocol.0 != JELLYFIN {
+        return Err(unsupported(&format!(
+            "it signs a household in through no identity source spoken to as {}",
+            source.protocol.0
+        )));
+    }
+    let Credential::UserPass { username, password } = &source.credential else {
+        return Err(unsupported(
+            "it signs a household in by an administrator's name and password",
+        ));
+    };
+    Ok((username, password))
+}
+
+/// Something Seerr is not asked to do, for `detail`.
+fn unsupported(detail: &str) -> Failure {
+    Failure::Unsupported {
+        service: SERVICE.to_owned(),
+        detail: detail.to_owned(),
+    }
 }
 
 #[cfg(test)]

@@ -37,7 +37,7 @@ mod client {
     };
 
     use super::super::Seerr;
-    use crate::credential::Holding as Held;
+    use lemonfiber_adapter_kit::credential::Holding as Held;
 
     const BASE: &str = "http://seerr:5055";
 
