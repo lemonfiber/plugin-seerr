@@ -500,7 +500,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-adapter-kit"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "axum",
  "lemonfiber-contract",
@@ -512,7 +512,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-bundle"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "lemonfiber-manifest",
  "libc",
@@ -525,7 +525,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-bundled"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "lemonfiber-bundle",
  "lemonfiber-manifest",
@@ -534,7 +534,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-contract"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "async-trait",
  "lemonfiber-ports",
@@ -548,7 +548,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-error"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "schemars",
  "serde",
@@ -557,7 +557,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-fixtures"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "async-trait",
  "lemonfiber-bundled",
@@ -570,7 +570,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-manifest"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "schemars",
  "serde",
@@ -582,7 +582,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-plugin"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "lemonfiber-bundled",
  "lemonfiber-contract",
@@ -598,7 +598,7 @@ dependencies = [
 [[package]]
 name = "lemonfiber-ports"
 version = "0.17.0"
-source = "git+https://github.com/lemonfiber/lemonfiber?rev=40edefb0c36a4451c1f9457cc1130bbaf61a081c#40edefb0c36a4451c1f9457cc1130bbaf61a081c"
+source = "git+https://github.com/lemonfiber/lemonfiber?rev=51fabb562fb3fb27076bbf2ba997323d80caf61d#51fabb562fb3fb27076bbf2ba997323d80caf61d"
 dependencies = [
  "async-trait",
  "base64",

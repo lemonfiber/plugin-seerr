@@ -5,7 +5,7 @@ use lemonfiber_fixtures::http::{Answer, Fake};
 use crate::seerr::Seerr;
 use lemonfiber_ports::http::Method;
 use lemonfiber_ports::media::Kind;
-use lemonfiber_ports::service::{Asked, Detail, MediaStatus, Searching, Wish};
+use lemonfiber_ports::service::{Asked, Detail, Failure, MediaStatus, Searching, Wish};
 
 /// Seerr, carrying its own key, answering over `http`.
 fn service(http: &Arc<Fake>) -> Seerr {
@@ -287,4 +287,21 @@ async fn a_title_is_named_by_its_film_title_or_its_series_name_with_its_year() {
         named(seerr.detail(Kind::Tv, "1399", "NL").await.ok().flatten()),
         Some((Some("Game of Thrones".to_owned()), Some(2011)))
     );
+}
+
+#[tokio::test]
+async fn an_ask_seerr_forbids_the_member_is_refused_rather_than_read_as_a_rejected_key() {
+    let http = Fake::always(Answer::reply(
+        403,
+        r#"{"message":"You do not have permission"}"#,
+    ));
+    let wish = Wish {
+        id: "603".to_owned(),
+        kind: Kind::Movies,
+        seasons: Vec::new(),
+    };
+    assert!(matches!(
+        service(&http).ask("4", &wish).await,
+        Err(Failure::Refused { detail, .. }) if detail == "the member may not ask for this"
+    ));
 }

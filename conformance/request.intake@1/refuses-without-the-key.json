@@ -3,7 +3,7 @@
   "note": "Asked without the plugin's key: the kit refuses it before the adapter is reached.",
   "request": {
     "method": "POST",
-    "path": "/lemonfiber/request.intake/v1/initialized",
+    "path": "/lemonfiber/request.intake/v1/establish",
     "accept": "application/json"
   },
   "response": {

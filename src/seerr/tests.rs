@@ -225,6 +225,44 @@ mod client {
     }
 
     #[tokio::test]
+    async fn an_owner_is_established_by_the_first_sign_in_unless_the_key_already_answers() {
+        let (held, http) = scripted(vec![(200, "{}")]);
+        assert!(held.establish(&source("http://jellyfin")).await.is_ok());
+        assert_eq!(
+            sent(&http)
+                .into_iter()
+                .map(|(method, path, _)| (method, path))
+                .collect::<Vec<_>>(),
+            [(Method::Get, "/api/v1/auth/me".to_owned())]
+        );
+        let (fresh, http) = scripted(vec![(403, ""), (200, "{}")]);
+        assert!(fresh.establish(&source("http://jellyfin")).await.is_ok());
+        assert_eq!(
+            sent(&http)
+                .into_iter()
+                .map(|(method, path, _)| (method, path))
+                .collect::<Vec<_>>(),
+            [
+                (Method::Get, "/api/v1/auth/me".to_owned()),
+                (Method::Post, "/api/v1/auth/jellyfin".to_owned())
+            ]
+        );
+        let (refused, _) = scripted(vec![(403, ""), (401, "")]);
+        assert!(matches!(
+            refused.establish(&source("http://jellyfin")).await,
+            Err(Failure::Unauthorised { .. })
+        ));
+        let mut other = source("http://jellyfin");
+        other.protocol = Protocol("plex".to_owned());
+        let (unasked, http) = scripted(vec![(403, "")]);
+        assert!(matches!(
+            unasked.establish(&other).await,
+            Err(Failure::Unsupported { .. })
+        ));
+        assert_eq!(http.requests().len(), 1);
+    }
+
+    #[tokio::test]
     async fn an_identity_source_it_cannot_sign_in_through_is_refused_before_anything_is_asked() {
         let mut other = source("http://jellyfin:8096");
         other.protocol = Protocol("plex".to_owned());
@@ -286,14 +324,15 @@ mod client {
             (200, first),
             (
                 200,
-                r#"{"pageInfo":{"results":101},"results":[{"id":2,"status":2,"type":"tv"}]}"#,
+                r#"{"pageInfo":{"results":101},"results":[{"id":2,"status":2,"type":"tv","media":{"tmdbId":1399}}]}"#,
             ),
         ]);
         let read = seerr.requests().await.unwrap_or_default();
         assert_eq!(read.len(), 101);
         assert_eq!(
-            read.last().map(|one| (one.id, one.request_status)),
-            Some((2, Some(RequestStatus::Approved)))
+            read.last()
+                .map(|one| (one.id, one.request_status, one.title_id.clone())),
+            Some((2, Some(RequestStatus::Approved), Some("1399".to_owned())))
         );
         assert_eq!(
             sent(&http).get(1).map(|(_, path, _)| path.clone()),
@@ -644,6 +683,19 @@ mod client {
             && body.pointer("/locale") == Some(&serde_json::json!("nl"))
             && body.pointer("/movieQuotaLimit") == Some(&serde_json::json!(5))
             && body.pointer("/tvQuotaDays") == Some(&serde_json::json!(7))));
+        let (unset, http) = scripted(vec![(200, r#"{"username":"ana"}"#), (200, "{}")]);
+        assert!(unset.set_quota("7", None).await.is_ok());
+        let written: Option<serde_json::Value> = sent(&http)
+            .get(1)
+            .and_then(|(_, _, body)| body.clone())
+            .and_then(|body| serde_json::from_str(&body).ok());
+        assert_eq!(
+            written,
+            Some(serde_json::json!({
+                "username": "ana", "movieQuotaLimit": 0, "movieQuotaDays": null,
+                "tvQuotaLimit": 0, "tvQuotaDays": null
+            }))
+        );
         assert!(scripted(vec![(200, "nope")])
             .0
             .set_quota("7", None)

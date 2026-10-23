@@ -11,8 +11,8 @@ taken against a throwaway Seerr at the digest `plugin.toml` pins for the
 plugin's own service, on a network with no route off the host, so nothing it
 answers depends on the metadata provider. Seerr answers its key only once it
 holds an owner, and its owner is made by the first sign-in through an identity
-source, so the throwaway Seerr is given the owner that sign-in makes before the
-adapter starts. The adapter runs from this repository's Dockerfile, as
+source, so the throwaway Seerr is given the owner that sign-in makes, and the
+member the contract's cases ask about, before the adapter starts. The adapter runs from this repository's Dockerfile, as
 lemonfiber runs it: the caller's uid, read-only, no capabilities, the key and
 the upstream credential owner-only in its configuration directory. This script
 stands where lemonfiber stands: it reads the key Seerr wrote to `main.apiKey`
@@ -60,6 +60,8 @@ DATABASE = pathlib.Path("db") / "db.sqlite3"
 CONFIG = "/app/config"
 STATUS = "/api/v1/status"
 OWNER = ("owner@lemonfiber.local", "owner", 2, "/avatarproxy/owner", 3, "owner", "0" * 32)
+MEMBER = ("member@lemonfiber.local", "member", 32, "/avatarproxy/member", 3, "member")
+INTAKE = "request.intake@1"
 OWNED = ('INSERT INTO "user" ("email", "username", "permissions", "avatar", "userType", '
          '"jellyfinUsername", "jellyfinUserId") VALUES (?, ?, ?, ?, ?, ?, ?)')
 REDACTED = "<redacted>"
@@ -67,13 +69,15 @@ SCRUBBED_WITHIN = 8
 PLACEHOLDER = re.compile(r"\{[^{}]+\}")
 NOTES = {
     "refuses-without-the-key": "Asked without the plugin's key: the kit refuses it before the adapter is reached.",
+    "establish-answers": "Seerr already answers its key as its owner, so there is nothing to establish.",
     "initialized-answers": "A Seerr holding its owner and never set up: not initialised.",
     "configure_identity-answers": "An identity source Seerr cannot sign in through: refused before Seerr is asked.",
     "answers-answers": "Seerr answers its own key.",
     "requests-answers": "A fresh Seerr holds no request.",
     "link_members-answers": "Seerr reaches no identity source to import members from: refused.",
-    "member_for-answers": "An id no identity source names: refused before Seerr is asked.",
-    "requesting-answers": "An id no identity source names: refused before Seerr is asked.",
+    "member_for-answers": "The account Seerr holds for the member the case names.",
+    "requesting-answers": "What that member may ask for: not their own approval.",
+    "approval_first-answers": "That member's asks made to wait for approval.",
     "remove_member-answers": "Seerr holds no account numbered 0: refused.",
     "telling-answers": "What a fresh Seerr tells the household through the browser: nothing.",
     "tell-answers": "Browser notices switched on for what arrives.",
@@ -85,11 +89,17 @@ NOTES = {
     "link_media_server-answers": "Seerr refuses an identity source it cannot reach.",
     "asking-answers": "What a fresh Seerr lets the household ask: approval first and no quota.",
     "set_asking-answers": "Approval first and five requests a week written as the household's asking.",
+    "left-answers": "What that member has left to ask for under the household's quota.",
+    "set_quota-answers": "Five requests a week written as that member's quota, the settings Seerr never held left unsent.",
+    "approves_own-answers": "That member made to wait for approval of their own asks.",
     "decide-answers": "Seerr holds no request numbered 0: refused.",
+    "hold_requests-answers": "That member's asking taken away, and what was taken said.",
+    "release_requests-answers": "Nothing given back, as the case holds nothing taken.",
     "reachable-answers": "Seerr holds no request numbered 0: refused.",
     "set_notices-answers": "The household's notice written to Seerr's discover page.",
     "search-answers": "The metadata provider is out of reach: no titles.",
     "detail-answers": "The metadata provider is out of reach: refused.",
+    "ask-answers": "An ask by that member, whose asking was taken away: Seerr forbids it, and the adapter refuses it.",
 }
 
 
@@ -160,10 +170,18 @@ def generated_key(settings: pathlib.Path) -> str | None:
     return key if isinstance(key, str) and key else None
 
 
+def member_id() -> str:
+    """The identity-source member the contract's cases link and ask about."""
+    return next(case["asked"]["media_server_id"] for case in published_cases(INTAKE)
+                if case["operation"] == "member_for")
+
+
 def owned(database: pathlib.Path) -> None:
-    """The owner the first sign-in through an identity source makes, held as Seerr holds it."""
+    """The owner the first sign-in through an identity source makes, and the member the
+    contract's cases ask about, each held as Seerr holds an account it imported."""
     with contextlib.closing(sqlite3.connect(database)) as held, held:
         held.execute(OWNED, OWNER)
+        held.execute(OWNED, (*MEMBER, member_id()))
 
 
 def answers_status(container: str, listens: int) -> bool:

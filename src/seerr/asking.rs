@@ -102,17 +102,17 @@ impl Counted {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemberSettings {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     username: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     email: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     locale: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     discover_region: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     streaming_region: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     original_language: Option<String>,
     #[serde(default)]
     movie_quota_limit: Option<u32>,
@@ -122,9 +122,9 @@ struct MemberSettings {
     tv_quota_limit: Option<u32>,
     #[serde(default)]
     tv_quota_days: Option<u32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     watchlist_sync_movies: Option<bool>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     watchlist_sync_tv: Option<bool>,
 }
 

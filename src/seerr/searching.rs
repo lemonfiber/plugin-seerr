@@ -16,6 +16,10 @@ const UNRELEASED_SERIES: [&str; 3] = ["Planned", "In Production", "Pilot"];
 
 const SPECIALS: u32 = 0;
 
+const FORBIDDEN: u16 = 403;
+
+const MAY_NOT_ASK: &str = "the member may not ask for this";
+
 const POSTERS: &str = "https://image.tmdb.org/t/p/w342";
 
 #[derive(Deserialize)]
@@ -307,6 +311,9 @@ async fn ask(seerr: &Seerr, member: &str, wish: &Wish) -> Result<Asked, Failure>
     let response = seerr
         .send_as(Method::Post, "/request", Some(body), user)
         .await?;
+    if response.status == FORBIDDEN {
+        return Err(seerr.endpoint.refused(MAY_NOT_ASK));
+    }
     let filed: Filed = seerr
         .endpoint
         .decode(&response, "the request could not be filed")?;

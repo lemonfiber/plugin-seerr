@@ -249,6 +249,21 @@ impl Seerr {
         self.endpoint.send(&request).await
     }
 
+    fn administrator<'a>(&self, source: &'a IdentitySource) -> Result<(&'a str, &'a str), Failure> {
+        if source.protocol.0 != JELLYFIN {
+            return Err(self.endpoint.unsupported(&format!(
+                "it signs a household in through no identity source spoken to as {}",
+                source.protocol.0
+            )));
+        }
+        let Credential::UserPass { username, password } = &source.credential else {
+            return Err(self
+                .endpoint
+                .unsupported("it signs a household in by an administrator's name and password"));
+        };
+        Ok((username, password))
+    }
+
     async fn signed_in_naming(
         &self,
         username: &str,
@@ -305,18 +320,16 @@ impl Requests for Seerr {
         self.endpoint.expect_success(&response)
     }
 
-    async fn configure_identity(&self, source: &IdentitySource) -> Result<(), Failure> {
-        if source.protocol.0 != JELLYFIN {
-            return Err(self.endpoint.unsupported(&format!(
-                "it signs a household in through no identity source spoken to as {}",
-                source.protocol.0
-            )));
+    async fn establish(&self, source: &IdentitySource) -> Result<(), Failure> {
+        if Requests::answers(self).await.is_ok() {
+            return Ok(());
         }
-        let Credential::UserPass { username, password } = &source.credential else {
-            return Err(self
-                .endpoint
-                .unsupported("it signs a household in by an administrator's name and password"));
-        };
+        let (username, password) = self.administrator(source)?;
+        self.signed_in_naming(username, password, &source.at).await
+    }
+
+    async fn configure_identity(&self, source: &IdentitySource) -> Result<(), Failure> {
+        let (username, password) = self.administrator(source)?;
         self.signed_in_naming(username, password, &source.at)
             .await?;
         let finished = self
