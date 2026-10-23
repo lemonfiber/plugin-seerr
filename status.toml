@@ -13,5 +13,5 @@ requirement = [
   { id = "F14-R13", state = "partial", evidence = ["src/adapter.rs", "tests/conformance.rs::the_adapter_names_the_release_and_digest_its_recordings_were_taken_from"] },
   { id = "F14-R15", state = "partial", evidence = ["Cargo.toml", "Dockerfile", ".github/workflows/release.yml"] },
   { id = "F14-R27", state = "partial", evidence = ["Dockerfile", ".github/workflows/adapter.yml"] },
-  { id = "F14-R28", state = "partial", evidence = ["src/credential.rs", "src/credential/tests.rs::the_file_lemonfiber_wrote_is_read_as_the_key"] },
+  { id = "F14-R28", state = "partial", evidence = ["src/main.rs", "src/adapter.rs"] },
 ]

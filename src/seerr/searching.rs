@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use super::records::{kind_of, media_status, media_type, request_status};
 use super::{Seerr, NOT_FOUND};
-use crate::endpoint::query_encoded;
 use lemonfiber_ports::http::Method;
 use lemonfiber_ports::media::Kind;
 use lemonfiber_ports::service::{
@@ -320,6 +319,19 @@ async fn ask(seerr: &Seerr, member: &str, wish: &Wish) -> Result<Asked, Failure>
     Ok(Asked {
         request: filed.id,
         waiting: request_status(filed.status) == Some(RequestStatus::Pending),
+    })
+}
+
+/// A value written as one query parameter's value: every byte but the unreserved ones
+/// percent-encoded.
+fn query_encoded(value: &str) -> String {
+    value.bytes().fold(String::new(), |mut out, byte| {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(char::from(byte));
+        } else {
+            out.extend(format!("%{byte:02X}").chars());
+        }
+        out
     })
 }
 

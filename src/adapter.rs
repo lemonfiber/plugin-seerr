@@ -8,6 +8,12 @@ use lemonfiber_contract::capabilities::request;
 
 use crate::seerr::Seerr;
 
+/// Where Seerr answers, by its service id and the port it listens on.
+pub const ADDRESS: &str = "http://seerr:5055";
+
+/// The part of `upstream.json` holding the key Seerr answers its API to.
+pub const API_KEY: &str = "api_key";
+
 /// The upstream this adapter fronts, as its project names itself.
 pub const UPSTREAM: &str = "Seerr";
 
