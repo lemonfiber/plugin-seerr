@@ -1,19 +1,10 @@
 {
   "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
   "note": "An ask by that member, whose asking was taken away: Seerr forbids it, and the adapter refuses it.",
-  "request": {
-    "method": "POST",
-    "path": "/lemonfiber/request.intake/v1/ask",
-    "accept": "application/json"
-  },
+  "request": {"method": "POST", "path": "/lemonfiber/request.intake/v1/ask", "accept": "application/json"},
   "response": {
     "status": 500,
-    "headers": {
-      "content-type": "application/problem+json"
-    },
-    "json": {
-      "type": "refused",
-      "detail": "the member may not ask for this"
-    }
+    "headers": {"content-type": "application/problem+json"},
+    "json": {"detail": "the member may not ask for this", "type": "refused"}
   }
 }
