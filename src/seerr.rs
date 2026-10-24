@@ -51,6 +51,14 @@ const OWNER_EMAIL: &str = "admin@lemonfiber.local";
 
 const JELLYFIN_SERVER_TYPE: u8 = 2;
 
+const NO_MEDIA_SERVER: u8 = 4;
+
+const HELD_JELLYFIN: &str = "/settings/jellyfin";
+
+const HELD_ELSEWHERE: &str =
+    "Seerr already holds a media server other than the Jellyfin lemonfiber \
+     names, so its setup is left unfinished";
+
 const OCCASION_BITS: [(Occasion, u32); 6] = [
     (Occasion::Received, 2),
     (Occasion::Approved, 4),
@@ -254,6 +262,14 @@ impl Seerr {
             .decode(&response, "the public settings could not be read")
     }
 
+    async fn holds(&self, jellyfin: &Reached<'_>) -> Result<bool, Failure> {
+        let response = self.send(Method::Get, HELD_JELLYFIN, None).await?;
+        let held: HeldJellyfin = self
+            .endpoint
+            .decode(&response, "the Jellyfin Seerr holds could not be read")?;
+        Ok(held.is(jellyfin))
+    }
+
     fn reached<'a>(&self, server_url: &'a str) -> Result<Reached<'a>, Failure> {
         taken_apart(server_url).ok_or_else(|| self.endpoint.refused(NOT_AN_ADDRESS))
     }
@@ -288,7 +304,27 @@ struct PublicSettings {
     #[serde(default)]
     initialized: bool,
     #[serde(default)]
-    media_server_type: u8,
+    media_server_type: Option<u8>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HeldJellyfin {
+    ip: String,
+    port: u16,
+    #[serde(default)]
+    use_ssl: Option<bool>,
+    #[serde(default)]
+    url_base: Option<String>,
+}
+
+impl HeldJellyfin {
+    fn is(&self, jellyfin: &Reached<'_>) -> bool {
+        self.ip == jellyfin.host
+            && self.port == jellyfin.port
+            && self.use_ssl.unwrap_or(false) == jellyfin.secure
+            && self.url_base.as_deref().unwrap_or("") == jellyfin.base
+    }
 }
 
 #[derive(Deserialize)]
@@ -311,8 +347,10 @@ impl Requests for Seerr {
     }
 
     async fn establish(&self, source: &IdentitySource) -> Result<(), Failure> {
-        if Requests::answers(self).await.is_ok() {
-            return Ok(());
+        match Requests::answers(self).await {
+            Ok(()) => return Ok(()),
+            Err(Failure::Unauthorised { .. }) => {}
+            Err(failure) => return Err(failure),
         }
         let (username, password) = administrator(source)?;
         let jellyfin = self.reached(&source.at)?;
@@ -322,8 +360,12 @@ impl Requests for Seerr {
     async fn configure_identity(&self, source: &IdentitySource) -> Result<(), Failure> {
         let (username, password) = administrator(source)?;
         let jellyfin = self.reached(&source.at)?;
-        if self.public_settings().await?.media_server_type != JELLYFIN_SERVER_TYPE {
-            self.signed_in_naming(username, password, &jellyfin).await?;
+        match self.public_settings().await?.media_server_type {
+            Some(NO_MEDIA_SERVER) => {
+                self.signed_in_naming(username, password, &jellyfin).await?;
+            }
+            Some(JELLYFIN_SERVER_TYPE) if self.holds(&jellyfin).await? => {}
+            _ => return Err(self.endpoint.refused(HELD_ELSEWHERE)),
         }
         let finished = self
             .send(Method::Post, "/settings/initialize", None)
