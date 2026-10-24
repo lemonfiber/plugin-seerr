@@ -169,7 +169,7 @@ mod client {
 
     #[tokio::test]
     async fn the_identity_source_is_signed_in_through_in_pieces_and_set_up_is_finished() {
-        let (seerr, http) = scripted(vec![(200, "{}"), (200, "{}")]);
+        let (seerr, http) = scripted(vec![(200, "{}"), (200, "{}"), (200, "{}")]);
         assert!(seerr
             .configure_identity(&source("https://jellyfin:8920/media"))
             .await
@@ -177,12 +177,17 @@ mod client {
         let asked = sent(&http);
         assert_eq!(
             asked
-                .first()
-                .map(|(method, path, _)| (*method, path.as_str())),
-            Some((Method::Post, "/api/v1/auth/jellyfin"))
+                .iter()
+                .map(|(method, path, _)| (*method, path.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (Method::Get, "/api/v1/settings/public"),
+                (Method::Post, "/api/v1/auth/jellyfin"),
+                (Method::Post, "/api/v1/settings/initialize")
+            ]
         );
         let body: Option<serde_json::Value> = asked
-            .first()
+            .get(1)
             .and_then(|(_, _, body)| body.as_deref())
             .and_then(|body| serde_json::from_str(body).ok());
         assert_eq!(
@@ -193,35 +198,54 @@ mod client {
                 "email": "admin@lemonfiber.local", "serverType": 2
             }))
         );
-        assert_eq!(
-            asked
-                .get(1)
-                .map(|(method, path, _)| (*method, path.as_str())),
-            Some((Method::Post, "/api/v1/settings/initialize"))
-        );
-        let (plain, http) = scripted(vec![(200, "{}"), (200, "{}")]);
+        let (plain, http) = scripted(vec![(200, "{}"), (200, "{}"), (200, "{}")]);
         assert!(plain
             .configure_identity(&source("http://jellyfin"))
             .await
             .is_ok());
-        assert!(http.requests().first().is_some_and(|one| {
+        assert!(http.requests().get(1).is_some_and(|one| {
             one.body.as_deref().is_some_and(|body| {
                 body.contains(r#""port":80"#) && body.contains(r#""urlBase":"""#)
             })
         }));
-        let (bracketed, http) = scripted(vec![(200, "{}"), (200, "{}")]);
+        let (bracketed, http) = scripted(vec![(200, "{}"), (200, "{}"), (200, "{}")]);
         assert!(bracketed
             .configure_identity(&source("http://[fd00::7]"))
             .await
             .is_ok());
         assert!(http
             .requests()
-            .first()
+            .get(1)
             .is_some_and(|one| one
                 .body
                 .as_deref()
                 .is_some_and(|body| body.contains(r#""hostname":"[fd00::7]""#)
                     && body.contains(r#""port":80"#))));
+    }
+
+    #[tokio::test]
+    async fn a_seerr_already_set_to_jellyfin_is_not_told_where_jellyfin_is_again() {
+        let (seerr, http) = scripted(vec![(200, r#"{"mediaServerType":2}"#), (200, "{}")]);
+        assert!(seerr
+            .configure_identity(&source("http://jellyfin"))
+            .await
+            .is_ok());
+        assert_eq!(
+            sent(&http)
+                .into_iter()
+                .map(|(method, path, _)| (method, path))
+                .collect::<Vec<_>>(),
+            [
+                (Method::Get, "/api/v1/settings/public".to_owned()),
+                (Method::Post, "/api/v1/settings/initialize".to_owned())
+            ]
+        );
+        let (unread, http) = scripted(vec![(500, "")]);
+        assert!(unread
+            .configure_identity(&source("http://jellyfin"))
+            .await
+            .is_err());
+        assert_eq!(http.requests().len(), 1);
     }
 
     #[tokio::test]

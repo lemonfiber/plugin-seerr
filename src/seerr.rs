@@ -248,15 +248,22 @@ impl Seerr {
         self.endpoint.send(&request).await
     }
 
+    async fn public_settings(&self) -> Result<PublicSettings, Failure> {
+        let response = self.send(Method::Get, "/settings/public", None).await?;
+        self.endpoint
+            .decode(&response, "the public settings could not be read")
+    }
+
+    fn reached<'a>(&self, server_url: &'a str) -> Result<Reached<'a>, Failure> {
+        taken_apart(server_url).ok_or_else(|| self.endpoint.refused(NOT_AN_ADDRESS))
+    }
+
     async fn signed_in_naming(
         &self,
         username: &str,
         password: &str,
-        server_url: &str,
+        jellyfin: &Reached<'_>,
     ) -> Result<(), Failure> {
-        let Some(jellyfin) = taken_apart(server_url) else {
-            return Err(self.endpoint.refused(NOT_AN_ADDRESS));
-        };
         let body = serde_json::json!({
             "username": username,
             "password": password,
@@ -276,9 +283,12 @@ impl Seerr {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PublicSettings {
     #[serde(default)]
     initialized: bool,
+    #[serde(default)]
+    media_server_type: u8,
 }
 
 #[derive(Deserialize)]
@@ -292,11 +302,7 @@ struct WebPush {
 #[async_trait]
 impl Requests for Seerr {
     async fn initialized(&self) -> Result<bool, Failure> {
-        let response = self.send(Method::Get, "/settings/public", None).await?;
-        let settings: PublicSettings = self
-            .endpoint
-            .decode(&response, "the public settings could not be read")?;
-        Ok(settings.initialized)
+        Ok(self.public_settings().await?.initialized)
     }
 
     async fn answers(&self) -> Result<(), Failure> {
@@ -309,13 +315,16 @@ impl Requests for Seerr {
             return Ok(());
         }
         let (username, password) = administrator(source)?;
-        self.signed_in_naming(username, password, &source.at).await
+        let jellyfin = self.reached(&source.at)?;
+        self.signed_in_naming(username, password, &jellyfin).await
     }
 
     async fn configure_identity(&self, source: &IdentitySource) -> Result<(), Failure> {
         let (username, password) = administrator(source)?;
-        self.signed_in_naming(username, password, &source.at)
-            .await?;
+        let jellyfin = self.reached(&source.at)?;
+        if self.public_settings().await?.media_server_type != JELLYFIN_SERVER_TYPE {
+            self.signed_in_naming(username, password, &jellyfin).await?;
+        }
         let finished = self
             .send(Method::Post, "/settings/initialize", None)
             .await?;
