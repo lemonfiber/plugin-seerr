@@ -24,6 +24,8 @@ fn a_field_reads_as_the_occasions_it_names_and_whether_it_holds_others() {
     assert!(both.others);
 }
 
+mod identity;
+
 mod client {
     use std::sync::Arc;
 
@@ -49,12 +51,12 @@ mod client {
         Seerr::new(http.clone(), BASE, Arc::new(KEY.to_owned()))
     }
 
-    fn scripted(replies: Vec<(u16, &'static str)>) -> (Seerr, Arc<Fake>) {
+    pub(super) fn scripted(replies: Vec<(u16, &'static str)>) -> (Seerr, Arc<Fake>) {
         let http = Fake::scripted(replies);
         (seerr(&http), http)
     }
 
-    fn sent(http: &Fake) -> Vec<(Method, String, Option<String>)> {
+    pub(super) fn sent(http: &Fake) -> Vec<(Method, String, Option<String>)> {
         http.requests()
             .into_iter()
             .map(|one| {
@@ -75,7 +77,7 @@ mod client {
         }
     }
 
-    fn source(at: &str) -> IdentitySource {
+    pub(super) fn source(at: &str) -> IdentitySource {
         IdentitySource {
             at: at.to_owned(),
             protocol: Protocol("jellyfin".to_owned()),
@@ -165,152 +167,6 @@ mod client {
             Requests::answers(&scripted(vec![(403, "")]).0).await,
             Err(Failure::Unauthorised { .. })
         ));
-    }
-
-    #[tokio::test]
-    async fn the_identity_source_is_signed_in_through_in_pieces_and_set_up_is_finished() {
-        let (seerr, http) = scripted(vec![(200, "{}"), (200, "{}")]);
-        assert!(seerr
-            .configure_identity(&source("https://jellyfin:8920/media"))
-            .await
-            .is_ok());
-        let asked = sent(&http);
-        assert_eq!(
-            asked
-                .first()
-                .map(|(method, path, _)| (*method, path.as_str())),
-            Some((Method::Post, "/api/v1/auth/jellyfin"))
-        );
-        let body: Option<serde_json::Value> = asked
-            .first()
-            .and_then(|(_, _, body)| body.as_deref())
-            .and_then(|body| serde_json::from_str(body).ok());
-        assert_eq!(
-            body,
-            Some(serde_json::json!({
-                "username": "admin", "password": "a-password", "hostname": "jellyfin",
-                "port": 8920, "useSsl": true, "urlBase": "/media",
-                "email": "admin@lemonfiber.local", "serverType": 2
-            }))
-        );
-        assert_eq!(
-            asked
-                .get(1)
-                .map(|(method, path, _)| (*method, path.as_str())),
-            Some((Method::Post, "/api/v1/settings/initialize"))
-        );
-        let (plain, http) = scripted(vec![(200, "{}"), (200, "{}")]);
-        assert!(plain
-            .configure_identity(&source("http://jellyfin"))
-            .await
-            .is_ok());
-        assert!(http.requests().first().is_some_and(|one| {
-            one.body.as_deref().is_some_and(|body| {
-                body.contains(r#""port":80"#) && body.contains(r#""urlBase":"""#)
-            })
-        }));
-        let (bracketed, http) = scripted(vec![(200, "{}"), (200, "{}")]);
-        assert!(bracketed
-            .configure_identity(&source("http://[fd00::7]"))
-            .await
-            .is_ok());
-        assert!(http
-            .requests()
-            .first()
-            .is_some_and(|one| one
-                .body
-                .as_deref()
-                .is_some_and(|body| body.contains(r#""hostname":"[fd00::7]""#)
-                    && body.contains(r#""port":80"#))));
-    }
-
-    #[tokio::test]
-    async fn an_owner_is_established_by_the_first_sign_in_unless_the_key_already_answers() {
-        let (held, http) = scripted(vec![(200, "{}")]);
-        assert!(held.establish(&source("http://jellyfin")).await.is_ok());
-        assert_eq!(
-            sent(&http)
-                .into_iter()
-                .map(|(method, path, _)| (method, path))
-                .collect::<Vec<_>>(),
-            [(Method::Get, "/api/v1/auth/me".to_owned())]
-        );
-        let (fresh, http) = scripted(vec![(403, ""), (200, "{}")]);
-        assert!(fresh.establish(&source("http://jellyfin")).await.is_ok());
-        assert_eq!(
-            sent(&http)
-                .into_iter()
-                .map(|(method, path, _)| (method, path))
-                .collect::<Vec<_>>(),
-            [
-                (Method::Get, "/api/v1/auth/me".to_owned()),
-                (Method::Post, "/api/v1/auth/jellyfin".to_owned())
-            ]
-        );
-        let (refused, _) = scripted(vec![(403, ""), (401, "")]);
-        assert!(matches!(
-            refused.establish(&source("http://jellyfin")).await,
-            Err(Failure::Unauthorised { .. })
-        ));
-        let mut other = source("http://jellyfin");
-        other.protocol = Protocol("plex".to_owned());
-        let (unasked, http) = scripted(vec![(403, "")]);
-        assert!(matches!(
-            unasked.establish(&other).await,
-            Err(Failure::Unsupported { .. })
-        ));
-        assert_eq!(http.requests().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn an_identity_source_it_cannot_sign_in_through_is_refused_before_anything_is_asked() {
-        let mut other = source("http://jellyfin:8096");
-        other.protocol = Protocol("plex".to_owned());
-        let mut keyed = source("http://jellyfin:8096");
-        keyed.credential = Credential::ApiKey("k".to_owned());
-        for unsupported in [other, keyed] {
-            let (seerr, http) = scripted(Vec::new());
-            assert!(matches!(
-                seerr.configure_identity(&unsupported).await,
-                Err(Failure::Unsupported { .. })
-            ));
-            assert!(http.requests().is_empty());
-        }
-        for at in [
-            "ftp://jellyfin",
-            "http://",
-            "http://:8096",
-            "http://jellyfin:x",
-            "http://jellyfin:0",
-            "http://admin:a-password@jellyfin",
-            "http://evil.example@jellyfin:8096",
-            "http://jellyfin:8096@evil.example",
-            "http://jellyfin?evil.example",
-            "http://jellyfin/media?x=1",
-            "http://jellyfin/media#x",
-            "http://jellyfin/../settings",
-            "http://jellyfin//media",
-            "http://jellyfin\\@evil.example",
-            "http://[fd00::7",
-            "http://[fd00::7]x",
-            "http://[evil.example]",
-            "http://-jellyfin",
-            "http://jelly fin",
-        ] {
-            let (seerr, http) = scripted(Vec::new());
-            let refused = seerr.configure_identity(&source(at)).await;
-            assert!(
-                matches!(&refused, Err(Failure::Refused { detail, .. })
-                    if !detail.contains("a-password") && !detail.contains("evil")),
-                "{at}"
-            );
-            assert!(http.requests().is_empty(), "{at}");
-        }
-        let (refused, _) = scripted(vec![(401, "")]);
-        assert!(refused
-            .configure_identity(&source("http://jellyfin"))
-            .await
-            .is_err());
     }
 
     #[tokio::test]
