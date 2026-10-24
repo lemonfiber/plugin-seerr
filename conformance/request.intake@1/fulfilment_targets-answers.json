@@ -1,24 +1,14 @@
 {
   "recorded_from": "ghcr.io/seerr-team/seerr@sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45",
   "note": "The television curator just added, as Seerr lists it.",
-  "request": {
-    "method": "POST",
-    "path": "/lemonfiber/request.intake/v1/fulfilment_targets",
-    "accept": "application/json"
-  },
+  "request": {"method": "POST", "path": "/lemonfiber/request.intake/v1/fulfilment_targets", "accept": "application/json"},
   "response": {
     "status": 200,
-    "headers": {
-      "content-type": "application/json"
-    },
+    "headers": {"content-type": "application/json"},
     "json": [
       {
+        "at": {"base": "", "host": "conformance-curator", "port": 58989},
         "id": "0",
-        "at": {
-          "host": "conformance-curator",
-          "port": 80,
-          "base": ""
-        },
         "key": "<redacted>",
         "kind": "tv"
       }
