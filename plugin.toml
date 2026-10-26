@@ -53,6 +53,7 @@ id     = "upstream-key"
 of     = "seerr"
 minted = true
 why    = "The key Seerr answers its API to, which the adapter in front of it presents"
+carried_from = { file = "/app/config/settings.json", format = "json", key = "main.apiKey" }
 
 [[proof]]
 id      = "seerr.identifies"

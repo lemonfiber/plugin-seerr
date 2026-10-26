@@ -52,7 +52,12 @@ mod client {
     }
 
     pub(super) fn scripted(replies: Vec<(u16, &'static str)>) -> (Seerr, Arc<Fake>) {
-        let http = Fake::scripted(replies);
+        let http = Fake::in_turn(
+            replies
+                .into_iter()
+                .map(|(status, body)| Answer::reply(status, body))
+                .collect(),
+        );
         (seerr(&http), http)
     }
 
