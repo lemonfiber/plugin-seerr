@@ -101,3 +101,7 @@ capability = "proxy.front"
 [[ask]]
 service    = "seerr"
 capability = "dashboard.show"
+
+[[wiring]]
+service  = "seerr"
+hostname = "requests"
