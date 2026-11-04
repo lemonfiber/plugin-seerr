@@ -22,6 +22,8 @@ pub(super) struct MemberResource {
     pub(super) id: i64,
     #[serde(default)]
     pub(super) permissions: u64,
+    #[serde(rename = "plexId", default)]
+    pub(super) plex_id: Option<i64>,
 }
 
 #[derive(Deserialize)]

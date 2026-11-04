@@ -20,11 +20,13 @@ mod asking;
 mod linking;
 mod members;
 mod notices;
+mod plex;
 mod records;
 mod searching;
 mod targets;
 
 use members::{approves_own, MemberResource, LINK_MEMBERS, MEMBERS, NOT_FOUND};
+pub use plex::PLEX;
 use records::{RequestPage, RequestRecord, REQUEST_PAGE};
 
 /// What every failure is blamed on.
@@ -55,8 +57,7 @@ const NO_MEDIA_SERVER: u8 = 4;
 
 const HELD_JELLYFIN: &str = "/settings/jellyfin";
 
-const HELD_ELSEWHERE: &str =
-    "Seerr already holds a media server other than the Jellyfin lemonfiber \
+const HELD_ELSEWHERE: &str = "Seerr already holds a media server other than the one lemonfiber \
      names, so its setup is left unfinished";
 
 const OCCASION_BITS: [(Occasion, u32); 6] = [
@@ -256,6 +257,11 @@ impl Seerr {
         self.endpoint.send(&request).await
     }
 
+    /// Whether Seerr serves Plex.
+    async fn serves_plex(&self) -> Result<bool, Failure> {
+        Ok(self.public_settings().await?.media_server_type == Some(plex::PLEX_SERVER_TYPE))
+    }
+
     async fn public_settings(&self) -> Result<PublicSettings, Failure> {
         let response = self.send(Method::Get, "/settings/public", None).await?;
         self.endpoint
@@ -352,20 +358,28 @@ impl Requests for Seerr {
             Err(Failure::Unauthorised { .. }) => {}
             Err(failure) => return Err(failure),
         }
-        let (username, password) = administrator(source)?;
-        let jellyfin = self.reached(&source.at)?;
-        self.signed_in_naming(username, password, &jellyfin).await
+        match signing(source)? {
+            Signing::Jellyfin { username, password } => {
+                let jellyfin = self.reached(&source.at)?;
+                self.signed_in_naming(username, password, &jellyfin).await
+            }
+            Signing::Plex(token) => plex::signed_in(self, token).await,
+        }
     }
 
     async fn configure_identity(&self, source: &IdentitySource) -> Result<(), Failure> {
-        let (username, password) = administrator(source)?;
-        let jellyfin = self.reached(&source.at)?;
-        match self.public_settings().await?.media_server_type {
-            Some(NO_MEDIA_SERVER) => {
-                self.signed_in_naming(username, password, &jellyfin).await?;
-            }
-            Some(JELLYFIN_SERVER_TYPE) if self.holds(&jellyfin).await? => {}
-            _ => return Err(self.endpoint.refused(HELD_ELSEWHERE)),
+        let signing = signing(source)?;
+        let route = self.reached(&source.at)?;
+        let held = self.public_settings().await?.media_server_type;
+        match signing {
+            Signing::Jellyfin { username, password } => match held {
+                Some(NO_MEDIA_SERVER) => {
+                    self.signed_in_naming(username, password, &route).await?;
+                }
+                Some(JELLYFIN_SERVER_TYPE) if self.holds(&route).await? => {}
+                _ => return Err(self.endpoint.refused(HELD_ELSEWHERE)),
+            },
+            Signing::Plex(token) => plex::configured(self, token, &route, held).await?,
         }
         let finished = self
             .send(Method::Post, "/settings/initialize", None)
@@ -420,6 +434,9 @@ impl Requests for Seerr {
     }
 
     async fn media_server_link(&self) -> Result<MediaServerLink, Failure> {
+        if self.serves_plex().await? {
+            return plex::link(self).await;
+        }
         linking::media_server_link(self).await
     }
 
@@ -428,12 +445,19 @@ impl Requests for Seerr {
         at: &lemonfiber_ports::service::Endpoint,
         key: &str,
     ) -> Result<(), Failure> {
+        self.held_to_an_address(at)?;
+        if self.serves_plex().await? {
+            return plex::linked(self, at, key).await;
+        }
         linking::link_media_server(self, at, key).await
     }
 
     async fn link_members(&self, members: &[String]) -> Result<(), Failure> {
         if members.is_empty() {
             return Ok(());
+        }
+        if self.serves_plex().await? {
+            return plex::members_linked(self, members).await;
         }
         let body = serde_json::json!({ "jellyfinUserIds": members }).to_string();
         let written = self.send(Method::Post, LINK_MEMBERS, Some(body)).await?;
@@ -518,6 +542,9 @@ impl Seerr {
         media_server_id: &str,
         whenever: &str,
     ) -> Result<Option<MemberResource>, Failure> {
+        if plex::a_plex_id(media_server_id) {
+            return plex::member(self, media_server_id, whenever).await;
+        }
         if !an_identity(media_server_id) {
             return Err(self
                 .endpoint
@@ -546,25 +573,40 @@ fn an_identity(id: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
 }
 
-/// The administrator's name and password Seerr signs a household in through, from a
-/// Jellyfin identity source.
-fn administrator(source: &IdentitySource) -> Result<(&str, &str), Failure> {
-    if source.protocol.0 != JELLYFIN {
-        return Err(unsupported(&format!(
-            "it signs a household in through no identity source spoken to as {}",
-            source.protocol.0
-        )));
+/// How Seerr's owner signs in, from the identity source it is handed.
+enum Signing<'a> {
+    /// A Jellyfin administrator's name and password.
+    Jellyfin {
+        username: &'a str,
+        password: &'a str,
+    },
+    /// The Plex token Seerr's owner signs in with.
+    Plex(&'a str),
+}
+
+/// How Seerr's owner signs in through `source`, refused for an identity source or a
+/// credential it does not sign in with.
+fn signing(source: &IdentitySource) -> Result<Signing<'_>, Failure> {
+    match (source.protocol.0.as_str(), &source.credential) {
+        (JELLYFIN, Credential::UserPass { username, password }) => {
+            Ok(Signing::Jellyfin { username, password })
+        }
+        (JELLYFIN, Credential::ApiKey(_)) => Err(unsupported(
+            "it signs a household in through Jellyfin by an administrator's name and password",
+        )),
+        (PLEX, Credential::ApiKey(token)) if token.is_empty() => Err(unsupported(plex::NO_KEY)),
+        (PLEX, Credential::ApiKey(token)) => Ok(Signing::Plex(token)),
+        (PLEX, Credential::UserPass { .. }) => Err(unsupported(
+            "it signs a household in through Plex by its owner's token",
+        )),
+        (other, _) => Err(unsupported(&format!(
+            "it signs a household in through no identity source spoken to as {other}"
+        ))),
     }
-    let Credential::UserPass { username, password } = &source.credential else {
-        return Err(unsupported(
-            "it signs a household in by an administrator's name and password",
-        ));
-    };
-    Ok((username, password))
 }
 
 /// Something Seerr is not asked to do, for `detail`.
-fn unsupported(detail: &str) -> Failure {
+pub(super) fn unsupported(detail: &str) -> Failure {
     Failure::Unsupported {
         service: SERVICE.to_owned(),
         detail: detail.to_owned(),
