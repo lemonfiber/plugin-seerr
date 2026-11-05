@@ -22,7 +22,15 @@ fn plex(at: &str, token: &str) -> IdentitySource {
     IdentitySource {
         at: at.to_owned(),
         protocol: Protocol("plex".to_owned()),
-        credential: Credential::ApiKey(token.to_owned()),
+        credential: Some(Credential::ApiKey(token.to_owned())),
+    }
+}
+
+/// Plex at the gate's route, with no key carried: the operator signs Seerr's owner in.
+fn owner(at: &str) -> IdentitySource {
+    IdentitySource {
+        credential: None,
+        ..plex(at, "")
     }
 }
 
@@ -118,24 +126,53 @@ async fn a_seerr_on_plex_not_yet_pointed_at_a_server_is_pointed_at_the_route() {
 }
 
 #[tokio::test]
-async fn an_owner_signing_in_through_plex_with_no_key_carried_is_unsupported_naming_why() {
-    let (seerr, http) = scripted(Vec::new());
+async fn an_owner_signed_in_through_plex_has_seerr_pointed_at_the_route_with_no_key_carried() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, NO_PLEX),
+        (200, "{}"),
+        (200, "{}"),
+    ]);
+
+    assert!(seerr.configure_identity(&owner(ROUTE)).await.is_ok());
+
+    let asked = sent(&http);
+    assert!(asked.iter().all(|(_, path, _)| path != "/api/v1/auth/plex"));
+    assert_eq!(
+        body(&asked, 2),
+        Some(serde_json::json!({ "ip": "request-gate", "port": 32400, "useSsl": false }))
+    );
+}
+
+#[tokio::test]
+async fn a_seerr_with_no_owner_and_no_key_carried_is_refused_naming_the_operators_own_sign_in() {
+    let (seerr, http) = scripted(vec![(200, UNSET)]);
     assert!(matches!(
-        seerr.configure_identity(&plex(ROUTE, "")).await,
-        Err(Failure::Unsupported { detail, .. }) if detail.contains("no key carried")
+        seerr.configure_identity(&owner(ROUTE)).await,
+        Err(Failure::Refused { detail, .. }) if detail.contains("signs in through Plex")
     ));
-    assert!(sent(&http).is_empty());
+    assert_eq!(sent(&http).len(), 1);
 
     let (unowned, http) = scripted(vec![(401, "")]);
     assert!(matches!(
-        unowned.establish(&plex(ROUTE, "")).await,
-        Err(Failure::Unsupported { .. })
+        unowned.establish(&owner(ROUTE)).await,
+        Err(Failure::Refused { detail, .. }) if detail.contains("signs in through Plex")
     ));
     assert_eq!(paths(&sent(&http)), [(Method::Get, "/api/v1/auth/me")]);
 
     let (owned, http) = scripted(vec![(200, "{}")]);
-    assert!(owned.establish(&plex(ROUTE, "")).await.is_ok());
+    assert!(owned.establish(&owner(ROUTE)).await.is_ok());
     assert_eq!(sent(&http).len(), 1);
+}
+
+#[tokio::test]
+async fn an_empty_key_signs_nobody_in_and_nothing_is_asked() {
+    let (seerr, http) = scripted(Vec::new());
+    assert!(matches!(
+        seerr.configure_identity(&plex(ROUTE, "")).await,
+        Err(Failure::Unsupported { detail, .. }) if detail.contains("empty key")
+    ));
+    assert!(sent(&http).is_empty());
 }
 
 #[tokio::test]
@@ -198,10 +235,10 @@ async fn establishing_signs_seerr_in_with_the_plex_token_unless_it_already_answe
 #[tokio::test]
 async fn plex_is_signed_in_through_by_a_token_and_jellyfin_by_a_name_and_password() {
     let named = IdentitySource {
-        credential: Credential::UserPass {
+        credential: Some(Credential::UserPass {
             username: "admin".to_owned(),
             password: "a-password".to_owned(),
-        },
+        }),
         ..plex(ROUTE, "a-token")
     };
     let keyed = IdentitySource {
@@ -212,7 +249,11 @@ async fn plex_is_signed_in_through_by_a_token_and_jellyfin_by_a_name_and_passwor
         protocol: Protocol("emby".to_owned()),
         ..plex(ROUTE, "a-key")
     };
-    for source in [named, keyed, other] {
+    let keyless = IdentitySource {
+        protocol: Protocol("jellyfin".to_owned()),
+        ..owner(ROUTE)
+    };
+    for source in [named, keyed, other, keyless] {
         let (seerr, http) = scripted(Vec::new());
         assert!(matches!(
             seerr.configure_identity(&source).await,

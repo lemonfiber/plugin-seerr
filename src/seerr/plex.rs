@@ -29,8 +29,12 @@ const MEMBER_PAGE: usize = 100;
 /// The longest Plex id, in digits.
 const LONGEST_ID: usize = 19;
 
-/// Why Seerr is not signed in through Plex with no key carried.
-pub(super) const NO_KEY: &str = "Seerr is signed in through Plex with its owner's key; an owner who signs in through Plex on Seerr's own page, with no key carried, is not answered until an identity source's credential may be absent";
+/// Why an empty key signs Seerr in as nobody.
+pub(super) const EMPTY_KEY: &str =
+    "an empty key signs nobody in: Seerr's owner signs in through Plex with a token, or with none where the operator signs in on Seerr's own page";
+
+/// Why Seerr with no owner is not set up where no key is carried.
+pub(super) const OWNER_SIGNS_IN: &str = "Seerr has no owner yet: the operator signs in through Plex on Seerr's own page, which makes them its owner";
 
 const NOT_A_PLEX_ADDRESS: &str =
     "Seerr reaches Plex at a host and a port alone, with no path beneath them";
@@ -87,20 +91,21 @@ pub(super) async fn signed_in(seerr: &Seerr, token: &str) -> Result<(), Failure>
     seerr.endpoint.expect_success(&signed_in)
 }
 
-/// Make Seerr's owner through Plex with `token` where it has none, and point it at Plex at
-/// `route`.
+/// Make Seerr's owner through Plex with `token` where it has none, or wait for the operator's
+/// own sign-in where none is carried, and point it at Plex at `route`.
 pub(super) async fn configured(
     seerr: &Seerr,
-    token: &str,
+    token: Option<&str>,
     route: &Reached<'_>,
     held: Option<u8>,
 ) -> Result<(), Failure> {
     if !route.base.is_empty() {
         return Err(seerr.endpoint.refused(NOT_A_PLEX_ADDRESS));
     }
-    match held {
-        Some(NO_MEDIA_SERVER) => signed_in(seerr, token).await?,
-        Some(PLEX_SERVER_TYPE) => {}
+    match (held, token) {
+        (Some(NO_MEDIA_SERVER), Some(token)) => signed_in(seerr, token).await?,
+        (Some(NO_MEDIA_SERVER), None) => return Err(seerr.endpoint.refused(OWNER_SIGNS_IN)),
+        (Some(PLEX_SERVER_TYPE), _) => {}
         _ => return Err(seerr.endpoint.refused(HELD_ELSEWHERE)),
     }
     let plex = held_plex(seerr).await?;

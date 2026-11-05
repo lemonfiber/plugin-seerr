@@ -363,7 +363,8 @@ impl Requests for Seerr {
                 let jellyfin = self.reached(&source.at)?;
                 self.signed_in_naming(username, password, &jellyfin).await
             }
-            Signing::Plex(token) => plex::signed_in(self, token).await,
+            Signing::Plex(Some(token)) => plex::signed_in(self, token).await,
+            Signing::Plex(None) => Err(self.endpoint.refused(plex::OWNER_SIGNS_IN)),
         }
     }
 
@@ -580,23 +581,27 @@ enum Signing<'a> {
         username: &'a str,
         password: &'a str,
     },
-    /// The Plex token Seerr's owner signs in with.
-    Plex(&'a str),
+    /// The Plex token Seerr's owner signs in with, or none where the operator signs in
+    /// through Plex on Seerr's own page.
+    Plex(Option<&'a str>),
 }
 
 /// How Seerr's owner signs in through `source`, refused for an identity source or a
 /// credential it does not sign in with.
 fn signing(source: &IdentitySource) -> Result<Signing<'_>, Failure> {
     match (source.protocol.0.as_str(), &source.credential) {
-        (JELLYFIN, Credential::UserPass { username, password }) => {
+        (JELLYFIN, Some(Credential::UserPass { username, password })) => {
             Ok(Signing::Jellyfin { username, password })
         }
-        (JELLYFIN, Credential::ApiKey(_)) => Err(unsupported(
+        (JELLYFIN, _) => Err(unsupported(
             "it signs a household in through Jellyfin by an administrator's name and password",
         )),
-        (PLEX, Credential::ApiKey(token)) if token.is_empty() => Err(unsupported(plex::NO_KEY)),
-        (PLEX, Credential::ApiKey(token)) => Ok(Signing::Plex(token)),
-        (PLEX, Credential::UserPass { .. }) => Err(unsupported(
+        (PLEX, Some(Credential::ApiKey(token))) if token.is_empty() => {
+            Err(unsupported(plex::EMPTY_KEY))
+        }
+        (PLEX, Some(Credential::ApiKey(token))) => Ok(Signing::Plex(Some(token))),
+        (PLEX, None) => Ok(Signing::Plex(None)),
+        (PLEX, Some(Credential::UserPass { .. })) => Err(unsupported(
             "it signs a household in through Plex by its owner's token",
         )),
         (other, _) => Err(unsupported(&format!(

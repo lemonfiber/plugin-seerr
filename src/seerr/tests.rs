@@ -88,10 +88,10 @@ mod client {
         IdentitySource {
             at: at.to_owned(),
             protocol: Protocol("jellyfin".to_owned()),
-            credential: Credential::UserPass {
+            credential: Some(Credential::UserPass {
                 username: "admin".to_owned(),
                 password: "a-password".to_owned(),
-            },
+            }),
         }
     }
 
