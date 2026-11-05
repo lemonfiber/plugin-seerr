@@ -26,6 +26,8 @@ fn a_field_reads_as_the_occasions_it_names_and_whether_it_holds_others() {
 
 mod identity;
 
+mod plex;
+
 mod client {
     use std::sync::Arc;
 
@@ -204,10 +206,10 @@ mod client {
 
     #[tokio::test]
     async fn members_are_linked_by_their_identity_source_ids_and_nobody_is_nothing_to_send() {
-        let (seerr, http) = scripted(vec![(201, "[]")]);
+        let (seerr, http) = scripted(vec![(200, r#"{"mediaServerType":2}"#), (201, "[]")]);
         assert!(seerr.link_members(&[MEMBER.to_owned()]).await.is_ok());
         assert_eq!(
-            sent(&http).first(),
+            sent(&http).get(1),
             Some(&(
                 Method::Post,
                 "/api/v1/user/import-from-jellyfin".to_owned(),
@@ -326,10 +328,13 @@ mod client {
 
     #[tokio::test]
     async fn an_answer_in_the_wrong_shape_is_refused_without_quoting_what_it_held() {
-        let (seerr, _) = scripted(vec![(
-            200,
-            r#"{"ip":"jellyfin","port":8096,"apiKey":["a-key-held-in-a-list"]}"#,
-        )]);
+        let (seerr, _) = scripted(vec![
+            (200, r#"{"mediaServerType":2}"#),
+            (
+                200,
+                r#"{"ip":"jellyfin","port":8096,"apiKey":["a-key-held-in-a-list"]}"#,
+            ),
+        ]);
         assert!(
             matches!(seerr.media_server_link().await, Err(Failure::Refused { detail, .. })
             if !detail.contains("a-key-held") && detail.contains("line 1 column"))
@@ -388,7 +393,7 @@ mod client {
                 port: 8989,
                 base: base.to_owned(),
             };
-            let (seerr, _) = scripted(vec![(200, "{}")]);
+            let (seerr, _) = scripted(vec![(200, r#"{"mediaServerType":2}"#), (200, "{}")]);
             assert!(
                 seerr.link_media_server(&fine, "k").await.is_ok(),
                 "{host} {base}"
@@ -829,22 +834,27 @@ mod client {
 
     #[tokio::test]
     async fn where_it_reaches_the_identity_source_is_read_and_written() {
-        let (seerr, _) = scripted(vec![(
-            200,
-            r#"{"ip":"jellyfin","port":8096,"urlBase":"","apiKey":"k"}"#,
-        )]);
+        let (seerr, _) = scripted(vec![
+            (200, r#"{"mediaServerType":2}"#),
+            (
+                200,
+                r#"{"ip":"jellyfin","port":8096,"urlBase":"","apiKey":"k"}"#,
+            ),
+        ]);
         assert!(seerr
             .media_server_link()
             .await
             .is_ok_and(|link| link.at.host == "jellyfin" && link.key == "k"));
-        assert!(scripted(vec![(200, "nope")])
-            .0
-            .media_server_link()
-            .await
-            .is_err());
-        let (seerr, http) = scripted(vec![(200, "{}")]);
+        assert!(
+            scripted(vec![(200, r#"{"mediaServerType":2}"#), (200, "nope")])
+                .0
+                .media_server_link()
+                .await
+                .is_err()
+        );
+        let (seerr, http) = scripted(vec![(200, r#"{"mediaServerType":2}"#), (200, "{}")]);
         assert!(seerr.link_media_server(&at(), "k").await.is_ok());
-        assert!(sent(&http).first().is_some_and(|(_, path, body)| path
+        assert!(sent(&http).get(1).is_some_and(|(_, path, body)| path
             == "/api/v1/settings/jellyfin"
             && body
                 .as_deref()
