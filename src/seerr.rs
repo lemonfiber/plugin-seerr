@@ -57,6 +57,9 @@ const NO_MEDIA_SERVER: u8 = 4;
 
 const HELD_JELLYFIN: &str = "/settings/jellyfin";
 
+/// The app name Seerr files the media server key it mints on its first sign-in under.
+const MINTED_AS: &str = "Seerr";
+
 const HELD_ELSEWHERE: &str = "Seerr already holds a media server other than the one lemonfiber \
      names, so its setup is left unfinished";
 
@@ -451,6 +454,10 @@ impl Requests for Seerr {
             return plex::linked(self, at, key).await;
         }
         linking::link_media_server(self, at, key).await
+    }
+
+    async fn minted_as(&self) -> Result<String, Failure> {
+        Ok(MINTED_AS.to_owned())
     }
 
     async fn link_members(&self, members: &[String]) -> Result<(), Failure> {

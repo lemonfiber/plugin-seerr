@@ -860,4 +860,11 @@ mod client {
                 .as_deref()
                 .is_some_and(|body| body.contains(r#""apiKey":"k""#))));
     }
+
+    #[tokio::test]
+    async fn the_key_seerr_mints_for_itself_is_filed_under_its_own_name_and_seerr_is_not_asked() {
+        let (seerr, http) = scripted(Vec::new());
+        assert_eq!(seerr.minted_as().await.ok().as_deref(), Some("Seerr"));
+        assert!(http.requests().is_empty());
+    }
 }
