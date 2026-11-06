@@ -88,10 +88,10 @@ mod client {
         IdentitySource {
             at: at.to_owned(),
             protocol: Protocol("jellyfin".to_owned()),
-            credential: Credential::UserPass {
+            credential: Some(Credential::UserPass {
                 username: "admin".to_owned(),
                 password: "a-password".to_owned(),
-            },
+            }),
         }
     }
 
@@ -859,5 +859,12 @@ mod client {
             && body
                 .as_deref()
                 .is_some_and(|body| body.contains(r#""apiKey":"k""#))));
+    }
+
+    #[tokio::test]
+    async fn the_key_seerr_mints_for_itself_is_filed_under_its_own_name_and_seerr_is_not_asked() {
+        let (seerr, http) = scripted(Vec::new());
+        assert_eq!(seerr.minted_as().await.ok().as_deref(), Some("Seerr"));
+        assert!(http.requests().is_empty());
     }
 }

@@ -182,7 +182,7 @@ async fn an_identity_source_it_cannot_sign_in_through_is_refused_before_anything
     let mut other = source("http://jellyfin:8096");
     other.protocol = Protocol("plex".to_owned());
     let mut keyed = source("http://jellyfin:8096");
-    keyed.credential = Credential::ApiKey("k".to_owned());
+    keyed.credential = Some(Credential::ApiKey("k".to_owned()));
     for unsupported in [other, keyed] {
         let (seerr, http) = scripted(Vec::new());
         assert!(matches!(
