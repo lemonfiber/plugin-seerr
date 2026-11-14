@@ -284,6 +284,30 @@ async fn an_owner_signed_in_through_plex_has_seerr_pointed_at_the_route_with_no_
 }
 
 #[tokio::test]
+async fn a_seerr_at_the_route_with_no_key_carried_is_not_told_where_plex_is_again() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, AT_THE_ROUTE),
+        (200, "{}"),
+        (200, "{}"),
+    ]);
+
+    assert!(seerr.configure_identity(&owner(ROUTE)).await.is_ok());
+
+    let asked = sent(&http);
+    assert_eq!(
+        paths(&asked),
+        [
+            (Method::Get, "/api/v1/settings/public"),
+            (Method::Get, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
+            (Method::Post, "/api/v1/settings/initialize"),
+        ]
+    );
+    assert_eq!(page_offers(&asked), [true]);
+}
+
+#[tokio::test]
 async fn a_write_of_the_address_failing_with_no_key_carried_touches_nothing_on_the_page() {
     let (seerr, http) = scripted(vec![
         (200, PLEX_SET),
