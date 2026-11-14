@@ -284,6 +284,21 @@ async fn an_owner_signed_in_through_plex_has_seerr_pointed_at_the_route_with_no_
 }
 
 #[tokio::test]
+async fn a_write_of_the_address_failing_with_no_key_carried_touches_nothing_on_the_page() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, NO_PLEX),
+        (500, r#"{"error":"the Plex settings could not be saved"}"#),
+    ]);
+
+    assert!(seerr.configure_identity(&owner(ROUTE)).await.is_err());
+
+    let asked = sent(&http);
+    assert_eq!(asked.len(), 3);
+    assert!(page_offers(&asked).is_empty());
+}
+
+#[tokio::test]
 async fn a_seerr_with_no_owner_and_no_key_carried_is_refused_naming_the_operators_own_sign_in() {
     let (seerr, http) = scripted(vec![(200, UNSET)]);
     assert!(matches!(
