@@ -92,6 +92,7 @@ mod client {
                 username: "admin".to_owned(),
                 password: "a-password".to_owned(),
             }),
+            members_sign_in: true,
         }
     }
 

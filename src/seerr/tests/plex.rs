@@ -23,6 +23,7 @@ fn plex(at: &str, token: &str) -> IdentitySource {
         at: at.to_owned(),
         protocol: Protocol("plex".to_owned()),
         credential: Some(Credential::ApiKey(token.to_owned())),
+        members_sign_in: true,
     }
 }
 
@@ -56,6 +57,7 @@ async fn a_fresh_seerr_is_signed_in_with_the_plex_token_pointed_at_the_route_and
         (200, NO_PLEX),
         (200, "{}"),
         (200, "{}"),
+        (200, "{}"),
     ]);
 
     assert!(seerr
@@ -71,6 +73,7 @@ async fn a_fresh_seerr_is_signed_in_with_the_plex_token_pointed_at_the_route_and
             (Method::Post, "/api/v1/auth/plex"),
             (Method::Get, "/api/v1/settings/plex"),
             (Method::Post, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
             (Method::Post, "/api/v1/settings/initialize"),
         ]
     );
@@ -79,35 +82,22 @@ async fn a_fresh_seerr_is_signed_in_with_the_plex_token_pointed_at_the_route_and
         Some(serde_json::json!({ "authToken": "managed-account-token" }))
     );
     assert_eq!(
+        body(&asked, 4),
+        Some(serde_json::json!({ "mediaServerLogin": true }))
+    );
+    assert_eq!(
         body(&asked, 3),
         Some(serde_json::json!({ "ip": "request-gate", "port": 32400, "useSsl": false }))
     );
 }
 
 #[tokio::test]
-async fn a_seerr_already_on_plex_at_the_route_is_only_set_up() {
-    let (seerr, http) = scripted(vec![(200, PLEX_SET), (200, AT_THE_ROUTE), (200, "{}")]);
-
-    assert!(seerr
-        .configure_identity(&plex(ROUTE, "gate-token"))
-        .await
-        .is_ok());
-
-    assert_eq!(
-        paths(&sent(&http)),
-        [
-            (Method::Get, "/api/v1/settings/public"),
-            (Method::Get, "/api/v1/settings/plex"),
-            (Method::Post, "/api/v1/settings/initialize"),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_seerr_on_plex_not_yet_pointed_at_a_server_is_pointed_at_the_route() {
+async fn a_seerr_already_on_plex_at_the_route_signs_its_owner_in_again_and_is_set_up() {
     let (seerr, http) = scripted(vec![
         (200, PLEX_SET),
-        (200, NO_PLEX),
+        (200, AT_THE_ROUTE),
+        (200, "{}"),
+        (200, "{}"),
         (200, "{}"),
         (200, "{}"),
     ]);
@@ -118,9 +108,101 @@ async fn a_seerr_on_plex_not_yet_pointed_at_a_server_is_pointed_at_the_route() {
         .is_ok());
 
     let asked = sent(&http);
-    assert!(asked.iter().all(|(_, path, _)| path != "/api/v1/auth/plex"));
     assert_eq!(
-        body(&asked, 2),
+        paths(&asked),
+        [
+            (Method::Get, "/api/v1/settings/public"),
+            (Method::Get, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
+            (Method::Post, "/api/v1/auth/plex"),
+            (Method::Post, "/api/v1/settings/main"),
+            (Method::Post, "/api/v1/settings/initialize"),
+        ]
+    );
+    assert_eq!(
+        body(&asked, 3),
+        Some(serde_json::json!({ "authToken": "gate-token" }))
+    );
+}
+
+#[tokio::test]
+async fn the_page_offers_members_plex_sign_in_only_where_the_identity_setup_says_so() {
+    for offered in [false, true] {
+        let (seerr, http) = scripted(vec![
+            (200, PLEX_SET),
+            (200, AT_THE_ROUTE),
+            (200, "{}"),
+            (200, "{}"),
+            (200, "{}"),
+            (200, "{}"),
+        ]);
+        let source = IdentitySource {
+            members_sign_in: offered,
+            ..plex(ROUTE, "managed-account-token")
+        };
+
+        assert!(seerr.configure_identity(&source).await.is_ok());
+
+        let asked = sent(&http);
+        assert_eq!(
+            body(&asked, 2),
+            Some(serde_json::json!({ "mediaServerLogin": true })),
+            "{offered}"
+        );
+        assert_eq!(
+            body(&asked, 4),
+            Some(serde_json::json!({ "mediaServerLogin": offered })),
+            "{offered}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_owner_sign_in_seerr_refuses_leaves_the_page_as_the_identity_setup_says() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, AT_THE_ROUTE),
+        (200, "{}"),
+        (500, r#"{"error":"Plex login is disabled"}"#),
+        (200, "{}"),
+    ]);
+    let managed = IdentitySource {
+        members_sign_in: false,
+        ..plex(ROUTE, "managed-account-token")
+    };
+
+    assert!(seerr.configure_identity(&managed).await.is_err());
+
+    let asked = sent(&http);
+    assert_eq!(
+        body(&asked, 4),
+        Some(serde_json::json!({ "mediaServerLogin": false }))
+    );
+    assert!(asked
+        .iter()
+        .all(|(_, path, _)| path != "/api/v1/settings/initialize"));
+}
+
+#[tokio::test]
+async fn a_seerr_on_plex_not_yet_pointed_at_a_server_is_pointed_at_the_route() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, NO_PLEX),
+        (200, "{}"),
+        (200, "{}"),
+        (200, "{}"),
+        (200, "{}"),
+        (200, "{}"),
+    ]);
+
+    assert!(seerr
+        .configure_identity(&plex(ROUTE, "gate-token"))
+        .await
+        .is_ok());
+
+    let asked = sent(&http);
+    assert_eq!(
+        body(&asked, 4),
         Some(serde_json::json!({ "ip": "request-gate", "port": 32400, "useSsl": false }))
     );
 }
@@ -130,6 +212,7 @@ async fn an_owner_signed_in_through_plex_has_seerr_pointed_at_the_route_with_no_
     let (seerr, http) = scripted(vec![
         (200, PLEX_SET),
         (200, NO_PLEX),
+        (200, "{}"),
         (200, "{}"),
         (200, "{}"),
     ]);

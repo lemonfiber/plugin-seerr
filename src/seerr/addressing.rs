@@ -8,7 +8,7 @@ use super::Seerr;
 use lemonfiber_ports::http::Method;
 use lemonfiber_ports::service::{Address, Addressing, Failure};
 
-const REQUESTS: &str = "/request";
+pub(super) const REQUESTS: &str = "/request";
 
 const NOTIFICATIONS: &str = "settings/notifications";
 

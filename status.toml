@@ -14,4 +14,6 @@ requirement = [
   { id = "F14-R15", state = "partial", evidence = ["Cargo.toml", "Dockerfile", ".github/workflows/release.yml"] },
   { id = "F14-R27", state = "partial", evidence = ["Dockerfile", ".github/workflows/adapter.yml"] },
   { id = "F14-R28", state = "partial", evidence = ["src/main.rs", "src/adapter.rs"] },
+  { id = "ARCH-R423", state = "partial", evidence = ["src/seerr/searching.rs", "src/seerr/searching/tests.rs::an_ask_naming_no_member_is_filed_as_seerrs_owner"] },
+  { id = "ARCH-R424", state = "partial", evidence = ["src/seerr/plex.rs", "src/seerr/tests/plex.rs::the_page_offers_members_plex_sign_in_only_where_the_identity_setup_says_so", "src/seerr/tests/plex.rs::an_owner_sign_in_seerr_refuses_leaves_the_page_as_the_identity_setup_says"] },
 ]

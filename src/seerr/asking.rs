@@ -9,8 +9,6 @@ use super::Seerr;
 use lemonfiber_ports::http::Method;
 use lemonfiber_ports::service::{Approving, Asking, Failure, Headroom, Holding, Left, Quota};
 
-const MAIN: &str = "/settings/main";
-
 const MEMBER_SETTINGS: &str = "settings/main";
 
 const QUOTA: &str = "quota";
@@ -214,7 +212,7 @@ impl Seerr {
 }
 
 async fn asking(seerr: &Seerr) -> Result<Asking, Failure> {
-    let response = seerr.send(Method::Get, MAIN, None).await?;
+    let response = seerr.send(Method::Get, super::MAIN_SETTINGS, None).await?;
     let held: MainSettings = seerr.endpoint.decode(
         &response,
         "what the household may ask for could not be read",
@@ -230,7 +228,7 @@ async fn asking(seerr: &Seerr) -> Result<Asking, Failure> {
 }
 
 async fn set_asking(seerr: &Seerr, asking: &Asking) -> Result<(), Failure> {
-    let response = seerr.send(Method::Get, MAIN, None).await?;
+    let response = seerr.send(Method::Get, super::MAIN_SETTINGS, None).await?;
     let held: MainSettings = seerr.endpoint.decode(
         &response,
         "what the household may ask for could not be read",
@@ -248,7 +246,9 @@ async fn set_asking(seerr: &Seerr, asking: &Asking) -> Result<(), Failure> {
         },
     })
     .to_string();
-    let written = seerr.send(Method::Post, MAIN, Some(body)).await?;
+    let written = seerr
+        .send(Method::Post, super::MAIN_SETTINGS, Some(body))
+        .await?;
     seerr.endpoint.expect_success(&written)
 }
 

@@ -6,7 +6,7 @@ use super::client::{scripted, sent, source};
 
 #[tokio::test]
 async fn the_identity_source_is_signed_in_through_in_pieces_and_set_up_is_finished() {
-    let (seerr, http) = scripted(vec![(200, UNSET), (200, "{}"), (200, "{}")]);
+    let (seerr, http) = scripted(vec![(200, UNSET), (200, "{}"), (200, "{}"), (200, "{}")]);
     assert!(seerr
         .configure_identity(&source("https://jellyfin:8920/media"))
         .await
@@ -20,6 +20,7 @@ async fn the_identity_source_is_signed_in_through_in_pieces_and_set_up_is_finish
         [
             (Method::Get, "/api/v1/settings/public"),
             (Method::Post, "/api/v1/auth/jellyfin"),
+            (Method::Post, "/api/v1/settings/main"),
             (Method::Post, "/api/v1/settings/initialize")
         ]
     );
@@ -35,7 +36,7 @@ async fn the_identity_source_is_signed_in_through_in_pieces_and_set_up_is_finish
             "email": "admin@lemonfiber.local", "serverType": 2
         }))
     );
-    let (plain, http) = scripted(vec![(200, UNSET), (200, "{}"), (200, "{}")]);
+    let (plain, http) = scripted(vec![(200, UNSET), (200, "{}"), (200, "{}"), (200, "{}")]);
     assert!(plain
         .configure_identity(&source("http://jellyfin"))
         .await
@@ -45,7 +46,7 @@ async fn the_identity_source_is_signed_in_through_in_pieces_and_set_up_is_finish
             .as_deref()
             .is_some_and(|body| body.contains(r#""port":80"#) && body.contains(r#""urlBase":"""#))
     }));
-    let (bracketed, http) = scripted(vec![(200, UNSET), (200, "{}"), (200, "{}")]);
+    let (bracketed, http) = scripted(vec![(200, UNSET), (200, "{}"), (200, "{}"), (200, "{}")]);
     assert!(bracketed
         .configure_identity(&source("http://[fd00::7]"))
         .await
@@ -73,7 +74,7 @@ fn asked_paths(http: &Fake) -> Vec<(Method, String)> {
 
 #[tokio::test]
 async fn a_seerr_already_set_to_the_named_jellyfin_is_not_told_where_it_is_again() {
-    let (seerr, http) = scripted(vec![(200, SET), (200, NAMED), (200, "{}")]);
+    let (seerr, http) = scripted(vec![(200, SET), (200, NAMED), (200, "{}"), (200, "{}")]);
     assert!(seerr
         .configure_identity(&source("http://jellyfin"))
         .await
@@ -83,6 +84,7 @@ async fn a_seerr_already_set_to_the_named_jellyfin_is_not_told_where_it_is_again
         [
             (Method::Get, "/api/v1/settings/public".to_owned()),
             (Method::Get, "/api/v1/settings/jellyfin".to_owned()),
+            (Method::Post, "/api/v1/settings/main".to_owned()),
             (Method::Post, "/api/v1/settings/initialize".to_owned())
         ]
     );

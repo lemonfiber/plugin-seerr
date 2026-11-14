@@ -177,6 +177,36 @@ async fn an_id_that_is_not_the_services_number_is_nothing_and_nothing_is_asked()
 }
 
 #[tokio::test]
+async fn an_ask_naming_no_member_is_filed_as_seerrs_owner() {
+    let http = Fake::by_route_in_turn(vec![(
+        Method::Post,
+        "/api/v1/request",
+        vec![Answer::reply(201, r#"{"id":9,"status":2}"#)],
+    )]);
+    let film = Wish {
+        id: "603".to_owned(),
+        kind: Kind::Movies,
+        seasons: Vec::new(),
+    };
+
+    let asked = service(&http).ask(None, &film).await;
+
+    assert_eq!(
+        asked.ok(),
+        Some(Asked {
+            request: 9,
+            waiting: false
+        })
+    );
+    let sent = http.requests();
+    assert_eq!(sent.len(), 1);
+    assert!(sent.iter().all(|asked| !asked
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("X-API-User"))));
+}
+
+#[tokio::test]
 async fn an_ask_is_filed_for_the_member_with_every_season_or_the_ones_named() {
     let http = Fake::by_route_in_turn(vec![(
         Method::Post,
@@ -193,8 +223,8 @@ async fn an_ask_is_filed_for_the_member_with_every_season_or_the_ones_named() {
         seasons,
     };
 
-    let every = seerr.ask("4", &wish(Vec::new())).await;
-    let named = seerr.ask("4", &wish(vec![2, 3])).await;
+    let every = seerr.ask(Some("4"), &wish(Vec::new())).await;
+    let named = seerr.ask(Some("4"), &wish(vec![2, 3])).await;
 
     assert_eq!(
         every.ok(),
@@ -243,16 +273,16 @@ async fn a_film_is_asked_for_without_seasons_and_an_unnamed_member_or_title_is_r
         seasons: vec![1],
     };
 
-    assert!(seerr.ask("somebody", &film).await.is_err());
-    assert!(seerr.ask("-4", &film).await.is_err());
+    assert!(seerr.ask(Some("somebody"), &film).await.is_err());
+    assert!(seerr.ask(Some("-4"), &film).await.is_err());
     let unnamed = Wish {
         id: "603&userId=1".to_owned(),
         ..film.clone()
     };
-    assert!(seerr.ask("4", &unnamed).await.is_err());
+    assert!(seerr.ask(Some("4"), &unnamed).await.is_err());
     assert!(http.requests().is_empty());
 
-    let asked = seerr.ask("4", &film).await;
+    let asked = seerr.ask(Some("4"), &film).await;
     assert_eq!(
         asked.ok(),
         Some(Asked {
@@ -301,7 +331,7 @@ async fn an_ask_seerr_forbids_the_member_is_refused_rather_than_read_as_a_reject
         seasons: Vec::new(),
     };
     assert!(matches!(
-        service(&http).ask("4", &wish).await,
+        service(&http).ask(Some("4"), &wish).await,
         Err(Failure::Refused { detail, .. }) if detail == "the member may not ask for this"
     ));
 }

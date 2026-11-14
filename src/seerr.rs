@@ -57,6 +57,9 @@ const NO_MEDIA_SERVER: u8 = 4;
 
 const HELD_JELLYFIN: &str = "/settings/jellyfin";
 
+/// Where Seerr's main settings are read and written.
+const MAIN_SETTINGS: &str = "/settings/main";
+
 /// The app name Seerr files the media server key it mints on its first sign-in under.
 const MINTED_AS: &str = "Seerr";
 
@@ -207,6 +210,7 @@ impl Seerr {
             headers: Vec::new(),
             body: None,
             pinned: None,
+            deadline: None,
         };
         self.endpoint
             .send(&request)
@@ -234,6 +238,7 @@ impl Seerr {
             headers,
             body,
             pinned: None,
+            deadline: None,
         })
     }
 
@@ -376,14 +381,19 @@ impl Requests for Seerr {
         let route = self.reached(&source.at)?;
         let held = self.public_settings().await?.media_server_type;
         match signing {
-            Signing::Jellyfin { username, password } => match held {
-                Some(NO_MEDIA_SERVER) => {
-                    self.signed_in_naming(username, password, &route).await?;
+            Signing::Jellyfin { username, password } => {
+                match held {
+                    Some(NO_MEDIA_SERVER) => {
+                        self.signed_in_naming(username, password, &route).await?;
+                    }
+                    Some(JELLYFIN_SERVER_TYPE) if self.holds(&route).await? => {}
+                    _ => return Err(self.endpoint.refused(HELD_ELSEWHERE)),
                 }
-                Some(JELLYFIN_SERVER_TYPE) if self.holds(&route).await? => {}
-                _ => return Err(self.endpoint.refused(HELD_ELSEWHERE)),
-            },
-            Signing::Plex(token) => plex::configured(self, token, &route, held).await?,
+                offered(self, source.members_sign_in).await?;
+            }
+            Signing::Plex(token) => {
+                plex::configured(self, token, &route, held, source.members_sign_in).await?;
+            }
         }
         let finished = self
             .send(Method::Post, "/settings/initialize", None)
@@ -591,6 +601,13 @@ enum Signing<'a> {
     /// The Plex token Seerr's owner signs in with, or none where the operator signs in
     /// through Plex on Seerr's own page.
     Plex(Option<&'a str>),
+}
+
+/// Set whether Seerr's own page offers members sign-in through its media server.
+async fn offered(seerr: &Seerr, offered: bool) -> Result<(), Failure> {
+    let body = serde_json::json!({ "mediaServerLogin": offered }).to_string();
+    let written = seerr.send(Method::Post, MAIN_SETTINGS, Some(body)).await?;
+    seerr.endpoint.expect_success(&written)
 }
 
 /// How Seerr's owner signs in through `source`, refused for an identity source or a
