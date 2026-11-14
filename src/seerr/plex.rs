@@ -116,25 +116,36 @@ pub(super) async fn configured(
     if !at_the_route && !plex.ip.is_empty() {
         return Err(seerr.endpoint.refused(HELD_ELSEWHERE));
     }
+    let pointing = (!at_the_route).then_some(route);
     if let (Some(PLEX_SERVER_TYPE), Some(token)) = (held, token) {
-        signed_in_again(seerr, token, offered).await?;
+        return signed_in_again(seerr, token, pointing, offered).await;
     }
-    if !at_the_route {
+    if let Some(route) = pointing {
         written(seerr, route.host, route.port, route.secure).await?;
     }
     super::offered(seerr, offered).await
 }
 
-/// Sign Seerr's owner in again with `token`. Seerr refuses every Plex sign-in once a media
-/// server is set while its page offers none, so it is offered for this sign-in, and left as
-/// `offered` says where the sign-in fails.
-async fn signed_in_again(seerr: &Seerr, token: &str, offered: bool) -> Result<(), Failure> {
+/// Sign Seerr's owner in again with `token`, then point it at `pointing` where it names a
+/// route. Seerr refuses every Plex sign-in once a media server is set while its page offers
+/// none, so the page offers it from before the sign-in; where `offered` says it should not,
+/// it is turned off again however the sign-in and the write end.
+async fn signed_in_again(
+    seerr: &Seerr,
+    token: &str,
+    pointing: Option<&Reached<'_>>,
+    offered: bool,
+) -> Result<(), Failure> {
     super::offered(seerr, true).await?;
-    let signed = signed_in(seerr, token).await;
-    if signed.is_err() {
-        super::offered(seerr, offered).await?;
+    let pointed = match (signed_in(seerr, token).await, pointing) {
+        (Ok(()), Some(route)) => written(seerr, route.host, route.port, route.secure).await,
+        (signed, _) => signed,
+    };
+    if offered {
+        return pointed;
     }
-    signed
+    let restored = super::offered(seerr, false).await;
+    pointed.and(restored)
 }
 
 async fn held_plex(seerr: &Seerr) -> Result<HeldPlex, Failure> {
