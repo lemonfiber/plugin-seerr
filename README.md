@@ -16,6 +16,9 @@ on the core's adapter kit, into the image `ghcr.io/lemonfiber/seerr-adapter`,
 published from every commit on `main` and from each tag the release train cuts.
 lemonfiber mints the key Seerr answers its API to, hands it to Seerr as
 `API_KEY` and to the adapter in its `upstream.json`, and to nothing else.
+Seerr starts from `config/seerr/settings.json`, which turns its version check
+off, so Seerr never asks GitHub whether a newer release is out: lemonfiber
+moves Seerr's release by its pin.
 
 ## What is here
 
