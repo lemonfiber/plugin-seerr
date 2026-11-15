@@ -31,6 +31,12 @@ Re-record whenever the adapter's answers or either digest change.
 - **Its proofs' recordings sit under `recordings/seerr/`**, and its starting
   files under `config/seerr/` (`ARCH-R271`).
 - **Every service declares `reaches` and `asks_for`** (`ARCH-R270`).
+- **Seerr never asks GitHub for releases.** `config/seerr/settings.json` starts
+  it with `versionCheck` off, which also keeps the answer of `/api/v1/status`,
+  which the proof `seerr.identifies` and the adapter's readiness read, the same
+  on every run. Its
+  `mediaServerType` is Seerr's own default, without which Seerr takes the file
+  for an Overseerr install to merge.
 - **The reader is spec's `first-party-plugin` workflow's,** and lemonfiber
   records the recordings itself. There is no Python here.
 - **No `unwrap`, `expect`, `panic` or indexing** outside tests. The lints in

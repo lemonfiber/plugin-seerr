@@ -5,6 +5,6 @@
   "response": {
     "status": 200,
     "headers": {"content-type": "application/json; charset=utf-8"},
-    "json": {"commitTag": "e2f24cb46079746936516c723b09820360f95113", "commitsBehind": 0, "restartRequired": false, "updateAvailable": true, "version": "3.5.0"}
+    "json": {"commitTag": "e2f24cb46079746936516c723b09820360f95113", "restartRequired": false, "version": "3.5.0"}
   }
 }
