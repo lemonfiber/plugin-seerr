@@ -91,13 +91,16 @@ pub(super) async fn signed_in(seerr: &Seerr, token: &str) -> Result<(), Failure>
     seerr.endpoint.expect_success(&signed_in)
 }
 
-/// Make Seerr's owner through Plex with `token` where it has none, or wait for the operator's
-/// own sign-in where none is carried, and point it at Plex at `route`.
+/// Make Seerr's owner through Plex with `token` where it has none, sign that owner in again
+/// with `token` where it has one, or wait for the operator's own sign-in where none is
+/// carried, and point it at Plex at `route`; its page offers members Plex sign-in where
+/// `offered`.
 pub(super) async fn configured(
     seerr: &Seerr,
     token: Option<&str>,
     route: &Reached<'_>,
     held: Option<u8>,
+    offered: bool,
 ) -> Result<(), Failure> {
     if !route.base.is_empty() {
         return Err(seerr.endpoint.refused(NOT_A_PLEX_ADDRESS));
@@ -109,13 +112,40 @@ pub(super) async fn configured(
         _ => return Err(seerr.endpoint.refused(HELD_ELSEWHERE)),
     }
     let plex = held_plex(seerr).await?;
-    if plex.is(route) {
-        return Ok(());
-    }
-    if !plex.ip.is_empty() {
+    let at_the_route = plex.is(route);
+    if !at_the_route && !plex.ip.is_empty() {
         return Err(seerr.endpoint.refused(HELD_ELSEWHERE));
     }
-    written(seerr, route.host, route.port, route.secure).await
+    let pointing = (!at_the_route).then_some(route);
+    if let (Some(PLEX_SERVER_TYPE), Some(token)) = (held, token) {
+        return signed_in_again(seerr, token, pointing, offered).await;
+    }
+    if let Some(route) = pointing {
+        written(seerr, route.host, route.port, route.secure).await?;
+    }
+    super::offered(seerr, offered).await
+}
+
+/// Sign Seerr's owner in again with `token`, then point it at `pointing` where it names a
+/// route. Seerr refuses every Plex sign-in once a media server is set while its page offers
+/// none, so the page offers it from before the sign-in; where `offered` says it should not,
+/// it is turned off again however the sign-in and the write end.
+async fn signed_in_again(
+    seerr: &Seerr,
+    token: &str,
+    pointing: Option<&Reached<'_>>,
+    offered: bool,
+) -> Result<(), Failure> {
+    super::offered(seerr, true).await?;
+    let pointed = match (signed_in(seerr, token).await, pointing) {
+        (Ok(()), Some(route)) => written(seerr, route.host, route.port, route.secure).await,
+        (signed, _) => signed,
+    };
+    if offered {
+        return pointed;
+    }
+    let restored = super::offered(seerr, false).await;
+    pointed.and(restored)
 }
 
 async fn held_plex(seerr: &Seerr) -> Result<HeldPlex, Failure> {

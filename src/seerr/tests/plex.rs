@@ -23,6 +23,7 @@ fn plex(at: &str, token: &str) -> IdentitySource {
         at: at.to_owned(),
         protocol: Protocol("plex".to_owned()),
         credential: Some(Credential::ApiKey(token.to_owned())),
+        members_sign_in: true,
     }
 }
 
@@ -48,12 +49,23 @@ fn body(asked: &[(Method, String, Option<String>)], at: usize) -> Option<serde_j
         .and_then(|body| serde_json::from_str(body).ok())
 }
 
+/// What each write of Seerr's main settings set its page's media-server sign-in to, in order.
+fn page_offers(asked: &[(Method, String, Option<String>)]) -> Vec<bool> {
+    asked
+        .iter()
+        .enumerate()
+        .filter(|(_, (method, path, _))| *method == Method::Post && path == "/api/v1/settings/main")
+        .filter_map(|(at, _)| body(asked, at)?.get("mediaServerLogin")?.as_bool())
+        .collect()
+}
+
 #[tokio::test]
 async fn a_fresh_seerr_is_signed_in_with_the_plex_token_pointed_at_the_route_and_set_up() {
     let (seerr, http) = scripted(vec![
         (200, UNSET),
         (200, "{}"),
         (200, NO_PLEX),
+        (200, "{}"),
         (200, "{}"),
         (200, "{}"),
     ]);
@@ -71,6 +83,7 @@ async fn a_fresh_seerr_is_signed_in_with_the_plex_token_pointed_at_the_route_and
             (Method::Post, "/api/v1/auth/plex"),
             (Method::Get, "/api/v1/settings/plex"),
             (Method::Post, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
             (Method::Post, "/api/v1/settings/initialize"),
         ]
     );
@@ -79,35 +92,22 @@ async fn a_fresh_seerr_is_signed_in_with_the_plex_token_pointed_at_the_route_and
         Some(serde_json::json!({ "authToken": "managed-account-token" }))
     );
     assert_eq!(
+        body(&asked, 4),
+        Some(serde_json::json!({ "mediaServerLogin": true }))
+    );
+    assert_eq!(
         body(&asked, 3),
         Some(serde_json::json!({ "ip": "request-gate", "port": 32400, "useSsl": false }))
     );
 }
 
 #[tokio::test]
-async fn a_seerr_already_on_plex_at_the_route_is_only_set_up() {
-    let (seerr, http) = scripted(vec![(200, PLEX_SET), (200, AT_THE_ROUTE), (200, "{}")]);
-
-    assert!(seerr
-        .configure_identity(&plex(ROUTE, "gate-token"))
-        .await
-        .is_ok());
-
-    assert_eq!(
-        paths(&sent(&http)),
-        [
-            (Method::Get, "/api/v1/settings/public"),
-            (Method::Get, "/api/v1/settings/plex"),
-            (Method::Post, "/api/v1/settings/initialize"),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_seerr_on_plex_not_yet_pointed_at_a_server_is_pointed_at_the_route() {
+async fn a_seerr_already_on_plex_at_the_route_signs_its_owner_in_again_and_is_set_up() {
     let (seerr, http) = scripted(vec![
         (200, PLEX_SET),
-        (200, NO_PLEX),
+        (200, AT_THE_ROUTE),
+        (200, "{}"),
+        (200, "{}"),
         (200, "{}"),
         (200, "{}"),
     ]);
@@ -118,9 +118,147 @@ async fn a_seerr_on_plex_not_yet_pointed_at_a_server_is_pointed_at_the_route() {
         .is_ok());
 
     let asked = sent(&http);
-    assert!(asked.iter().all(|(_, path, _)| path != "/api/v1/auth/plex"));
     assert_eq!(
-        body(&asked, 2),
+        paths(&asked),
+        [
+            (Method::Get, "/api/v1/settings/public"),
+            (Method::Get, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
+            (Method::Post, "/api/v1/auth/plex"),
+            (Method::Post, "/api/v1/settings/initialize"),
+        ]
+    );
+    assert_eq!(
+        body(&asked, 3),
+        Some(serde_json::json!({ "authToken": "gate-token" }))
+    );
+}
+
+#[tokio::test]
+async fn the_page_offers_members_plex_sign_in_only_where_the_identity_setup_says_so() {
+    for offered in [false, true] {
+        let (seerr, http) = scripted(vec![
+            (200, PLEX_SET),
+            (200, AT_THE_ROUTE),
+            (200, "{}"),
+            (200, "{}"),
+            (200, "{}"),
+            (200, "{}"),
+        ]);
+        let source = IdentitySource {
+            members_sign_in: offered,
+            ..plex(ROUTE, "managed-account-token")
+        };
+
+        assert!(seerr.configure_identity(&source).await.is_ok());
+
+        let offering = if offered {
+            vec![true]
+        } else {
+            vec![true, false]
+        };
+        assert_eq!(page_offers(&sent(&http)), offering, "{offered}");
+    }
+}
+
+#[tokio::test]
+async fn a_write_failing_after_the_owner_signs_in_again_still_turns_the_page_back_off() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, NO_PLEX),
+        (200, "{}"),
+        (200, "{}"),
+        (500, r#"{"error":"the Plex settings could not be saved"}"#),
+        (200, "{}"),
+    ]);
+    let managed = IdentitySource {
+        members_sign_in: false,
+        ..plex(ROUTE, "managed-account-token")
+    };
+
+    assert!(seerr.configure_identity(&managed).await.is_err());
+
+    let asked = sent(&http);
+    assert_eq!(
+        paths(&asked),
+        [
+            (Method::Get, "/api/v1/settings/public"),
+            (Method::Get, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
+            (Method::Post, "/api/v1/auth/plex"),
+            (Method::Post, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
+        ]
+    );
+    assert_eq!(page_offers(&asked), [true, false]);
+}
+
+#[tokio::test]
+async fn turning_the_page_back_off_failing_after_the_owner_signs_in_again_is_the_failure() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, AT_THE_ROUTE),
+        (200, "{}"),
+        (200, "{}"),
+        (500, r#"{"error":"the main settings could not be saved"}"#),
+    ]);
+    let managed = IdentitySource {
+        members_sign_in: false,
+        ..plex(ROUTE, "managed-account-token")
+    };
+
+    assert!(seerr.configure_identity(&managed).await.is_err());
+
+    let asked = sent(&http);
+    assert_eq!(page_offers(&asked), [true, false]);
+    assert!(asked
+        .iter()
+        .all(|(_, path, _)| path != "/api/v1/settings/initialize"));
+}
+
+#[tokio::test]
+async fn an_owner_sign_in_seerr_refuses_leaves_the_page_as_the_identity_setup_says() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, AT_THE_ROUTE),
+        (200, "{}"),
+        (500, r#"{"error":"Plex login is disabled"}"#),
+        (200, "{}"),
+    ]);
+    let managed = IdentitySource {
+        members_sign_in: false,
+        ..plex(ROUTE, "managed-account-token")
+    };
+
+    assert!(seerr.configure_identity(&managed).await.is_err());
+
+    let asked = sent(&http);
+    assert_eq!(page_offers(&asked), [true, false]);
+    assert!(asked
+        .iter()
+        .all(|(_, path, _)| path != "/api/v1/settings/initialize"));
+}
+
+#[tokio::test]
+async fn a_seerr_on_plex_not_yet_pointed_at_a_server_is_pointed_at_the_route() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, NO_PLEX),
+        (200, "{}"),
+        (200, "{}"),
+        (200, "{}"),
+        (200, "{}"),
+        (200, "{}"),
+    ]);
+
+    assert!(seerr
+        .configure_identity(&plex(ROUTE, "gate-token"))
+        .await
+        .is_ok());
+
+    let asked = sent(&http);
+    assert_eq!(
+        body(&asked, 4),
         Some(serde_json::json!({ "ip": "request-gate", "port": 32400, "useSsl": false }))
     );
 }
@@ -130,6 +268,7 @@ async fn an_owner_signed_in_through_plex_has_seerr_pointed_at_the_route_with_no_
     let (seerr, http) = scripted(vec![
         (200, PLEX_SET),
         (200, NO_PLEX),
+        (200, "{}"),
         (200, "{}"),
         (200, "{}"),
     ]);
@@ -142,6 +281,45 @@ async fn an_owner_signed_in_through_plex_has_seerr_pointed_at_the_route_with_no_
         body(&asked, 2),
         Some(serde_json::json!({ "ip": "request-gate", "port": 32400, "useSsl": false }))
     );
+}
+
+#[tokio::test]
+async fn a_seerr_at_the_route_with_no_key_carried_is_not_told_where_plex_is_again() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, AT_THE_ROUTE),
+        (200, "{}"),
+        (200, "{}"),
+    ]);
+
+    assert!(seerr.configure_identity(&owner(ROUTE)).await.is_ok());
+
+    let asked = sent(&http);
+    assert_eq!(
+        paths(&asked),
+        [
+            (Method::Get, "/api/v1/settings/public"),
+            (Method::Get, "/api/v1/settings/plex"),
+            (Method::Post, "/api/v1/settings/main"),
+            (Method::Post, "/api/v1/settings/initialize"),
+        ]
+    );
+    assert_eq!(page_offers(&asked), [true]);
+}
+
+#[tokio::test]
+async fn a_write_of_the_address_failing_with_no_key_carried_touches_nothing_on_the_page() {
+    let (seerr, http) = scripted(vec![
+        (200, PLEX_SET),
+        (200, NO_PLEX),
+        (500, r#"{"error":"the Plex settings could not be saved"}"#),
+    ]);
+
+    assert!(seerr.configure_identity(&owner(ROUTE)).await.is_err());
+
+    let asked = sent(&http);
+    assert_eq!(asked.len(), 3);
+    assert!(page_offers(&asked).is_empty());
 }
 
 #[tokio::test]

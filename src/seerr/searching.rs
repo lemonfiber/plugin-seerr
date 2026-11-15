@@ -264,7 +264,7 @@ impl Searching for Seerr {
         detail(self, kind, id, region).await
     }
 
-    async fn ask(&self, member: &str, wish: &Wish) -> Result<Asked, Failure> {
+    async fn ask(&self, member: Option<&str>, wish: &Wish) -> Result<Asked, Failure> {
         ask(self, member, wish).await
     }
 }
@@ -289,8 +289,11 @@ async fn detail(
     Ok(Some(full.detail(kind, region)))
 }
 
-async fn ask(seerr: &Seerr, member: &str, wish: &Wish) -> Result<Asked, Failure> {
-    let (Some(media), Some(user)) = (number(&wish.id), number(member)) else {
+async fn ask(seerr: &Seerr, member: Option<&str>, wish: &Wish) -> Result<Asked, Failure> {
+    let (Some(media), Some(user)) = (
+        number(&wish.id),
+        member.map_or(Some(None), |member| number(member).map(Some)),
+    ) else {
         return Err(seerr
             .endpoint
             .refused("the title or the member is not one Seerr names"));
@@ -307,9 +310,18 @@ async fn ask(seerr: &Seerr, member: &str, wish: &Wish) -> Result<Asked, Failure>
         }),
     };
     let body = serde_json::to_string(&filing).unwrap_or_default();
-    let response = seerr
-        .send_as(Method::Post, "/request", Some(body), user)
-        .await?;
+    let response = match user {
+        Some(user) => {
+            seerr
+                .send_as(Method::Post, super::addressing::REQUESTS, Some(body), user)
+                .await?
+        }
+        None => {
+            seerr
+                .send(Method::Post, super::addressing::REQUESTS, Some(body))
+                .await?
+        }
+    };
     if response.status == FORBIDDEN {
         return Err(seerr.endpoint.refused(MAY_NOT_ASK));
     }

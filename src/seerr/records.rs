@@ -1,5 +1,6 @@
 use serde::Deserialize;
 
+use lemonfiber_ports::instant::Instant;
 use lemonfiber_ports::media::Kind;
 use lemonfiber_ports::service::{HouseholdRequest, MediaStatus, RequestStatus};
 
@@ -66,13 +67,20 @@ impl RequestRecord {
     pub(super) fn into_request(self) -> HouseholdRequest {
         HouseholdRequest {
             id: self.id,
-            made: self.created_at,
+            made: self
+                .created_at
+                .as_deref()
+                .and_then(Instant::from_service_text),
             member: self.requested_by.display_name,
             member_id: self.requested_by.jellyfin_user_id,
             kind: kind_of(&self.media_type),
             title_id: self.media.tmdb_id.map(|id| id.to_string()),
             item: self.media.external_service_id,
-            arrived: self.media.media_added_at,
+            arrived: self
+                .media
+                .media_added_at
+                .as_deref()
+                .and_then(Instant::from_service_text),
             shelf_id: self.media.jellyfin_media_id,
             request_status: request_status(self.status),
             media_status: media_status(self.media.status),
