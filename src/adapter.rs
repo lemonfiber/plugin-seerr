@@ -20,8 +20,7 @@ pub const UPSTREAM: &str = "Seerr";
 /// The Seerr release this adapter's recordings were taken from.
 pub const RELEASE: &str = "v3.5.0";
 
-/// The digest of the image that release's recordings were taken from.
-pub const DIGEST: &str = "sha256:27602401178d54f1964442287b9f23f67a3fa2252645ee8065839ea1c3f69e45";
+include!(concat!(env!("OUT_DIR"), "/fronted.rs"));
 
 /// What this adapter says it is: the contract it speaks and the release it supports.
 #[must_use]
