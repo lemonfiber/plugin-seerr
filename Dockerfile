@@ -4,7 +4,7 @@
 FROM rust:1.100.0-alpine3.22@sha256:8e71319e2fb470aa2d6335a8376a104ceea1957f86ec91b7efcbb9b4732973ae AS build
 RUN apk add --no-cache musl-dev
 WORKDIR /src
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs plugin.toml ./
 COPY src ./src
 RUN cargo build --release --locked --bin seerr-adapter && cp target/release/seerr-adapter /seerr-adapter
 
