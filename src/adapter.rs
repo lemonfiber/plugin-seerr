@@ -17,9 +17,6 @@ pub const API_KEY: &str = "api_key";
 /// The upstream this adapter fronts, as its project names itself.
 pub const UPSTREAM: &str = "Seerr";
 
-/// The Seerr release this adapter's recordings were taken from.
-pub const RELEASE: &str = "v3.5.0";
-
 include!(concat!(env!("OUT_DIR"), "/fronted.rs"));
 
 /// What this adapter says it is: the contract it speaks and the release it supports.
