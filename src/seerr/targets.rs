@@ -3,7 +3,9 @@ use serde::Deserialize;
 use super::Seerr;
 use lemonfiber_ports::http::Method;
 use lemonfiber_ports::media::Kind;
-use lemonfiber_ports::service::{Endpoint, Failure, FulfilmentTarget, RegisteredTarget};
+use lemonfiber_ports::service::{
+    Endpoint, Failure, FulfilmentTarget, QualityProfile, RegisteredTarget, TargetFiling,
+};
 
 const fn list(kind: Kind) -> &'static str {
     match kind {
@@ -15,6 +17,12 @@ const fn list(kind: Kind) -> &'static str {
 const WHEN_RELEASED: &str = "released";
 
 const ID: &str = "id";
+
+const PROFILE_ID: &str = "activeProfileId";
+
+const PROFILE_NAME: &str = "activeProfileName";
+
+const DIRECTORY: &str = "activeDirectory";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,9 +84,9 @@ pub(super) async fn add_fulfilment_target(
         ("baseUrl", serde_json::json!(target.at.base)),
         ("apiKey", serde_json::json!(target.key)),
         ("useSsl", serde_json::json!(false)),
-        ("activeProfileId", serde_json::json!(target.profile.id)),
-        ("activeProfileName", serde_json::json!(target.profile.name)),
-        ("activeDirectory", serde_json::json!(target.folder)),
+        (PROFILE_ID, serde_json::json!(target.profile.id)),
+        (PROFILE_NAME, serde_json::json!(target.profile.name)),
+        (DIRECTORY, serde_json::json!(target.folder)),
         ("is4k", serde_json::json!(false)),
         ("isDefault", serde_json::json!(true)),
         differs,
@@ -93,6 +101,50 @@ pub(super) async fn add_fulfilment_target(
     seerr.endpoint.expect_success(&written)
 }
 
+async fn held_as(
+    seerr: &Seerr,
+    held: &RegisteredTarget,
+) -> Result<serde_json::Map<String, serde_json::Value>, Failure> {
+    let response = seerr.send(Method::Get, list(held.kind), None).await?;
+    let listed: Vec<serde_json::Map<String, serde_json::Value>> = seerr
+        .endpoint
+        .decode(&response, "Seerr's fulfilment targets could not be read")?;
+    listed
+        .into_iter()
+        .find(|one| {
+            one.get(ID)
+                .and_then(serde_json::Value::as_i64)
+                .is_some_and(|id| id.to_string() == held.id)
+        })
+        .ok_or_else(|| {
+            seerr.endpoint.refused(&format!(
+                "Seerr no longer holds the target it listed as {}",
+                held.id
+            ))
+        })
+}
+
+async fn rewritten<const N: usize>(
+    seerr: &Seerr,
+    held: &RegisteredTarget,
+    fields: [(&str, serde_json::Value); N],
+) -> Result<(), Failure> {
+    let mut target = held_as(seerr, held).await?;
+    target.remove(ID);
+    for (field, value) in fields {
+        target.insert(field.to_owned(), value);
+    }
+    let body = serde_json::Value::Object(target).to_string();
+    let written = seerr
+        .send(
+            Method::Put,
+            &format!("{}/{}", list(held.kind), held.id),
+            Some(body),
+        )
+        .await?;
+    seerr.endpoint.expect_success(&written)
+}
+
 pub(super) async fn move_fulfilment_target(
     seerr: &Seerr,
     held: &RegisteredTarget,
@@ -100,36 +152,68 @@ pub(super) async fn move_fulfilment_target(
     key: &str,
 ) -> Result<(), Failure> {
     seerr.held_to_an_address(at)?;
-    let path = list(held.kind);
-    let response = seerr.send(Method::Get, path, None).await?;
-    let listed: Vec<serde_json::Map<String, serde_json::Value>> = seerr
-        .endpoint
-        .decode(&response, "Seerr's fulfilment targets could not be read")?;
-    let Some(mut moved) = listed.into_iter().find(|one| {
-        one.get(ID)
-            .and_then(serde_json::Value::as_i64)
-            .is_some_and(|id| id.to_string() == held.id)
-    }) else {
-        return Err(seerr.endpoint.refused(&format!(
-            "Seerr no longer holds the target it listed as {}",
+    rewritten(
+        seerr,
+        held,
+        [
+            ("hostname", serde_json::json!(at.host)),
+            ("port", serde_json::json!(at.port)),
+            ("baseUrl", serde_json::json!(at.base)),
+            ("apiKey", serde_json::json!(key)),
+            ("useSsl", serde_json::json!(false)),
+        ],
+    )
+    .await
+}
+
+pub(super) async fn fulfilment_target_filing(
+    seerr: &Seerr,
+    held: &RegisteredTarget,
+) -> Result<TargetFiling, Failure> {
+    let found = held_as(seerr, held).await?;
+    let unnamed = || {
+        seerr.endpoint.refused(&format!(
+            "Seerr names no quality profile or root folder for the target it listed as {}",
             held.id
-        )));
+        ))
     };
-    moved.remove(ID);
-    for (at, value) in [
-        ("hostname", serde_json::json!(at.host)),
-        ("port", serde_json::json!(at.port)),
-        ("baseUrl", serde_json::json!(at.base)),
-        ("apiKey", serde_json::json!(key)),
-        ("useSsl", serde_json::json!(false)),
-    ] {
-        moved.insert(at.to_owned(), value);
-    }
-    let body = serde_json::Value::Object(moved).to_string();
-    let written = seerr
-        .send(Method::Put, &format!("{path}/{}", held.id), Some(body))
-        .await?;
-    seerr.endpoint.expect_success(&written)
+    let profile = found
+        .get(PROFILE_ID)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|id| u32::try_from(id).ok())
+        .ok_or_else(unnamed)?;
+    let folder = found
+        .get(DIRECTORY)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(unnamed)?;
+    let name = found
+        .get(PROFILE_NAME)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    Ok(TargetFiling {
+        profile: QualityProfile {
+            id: profile,
+            name: name.to_owned(),
+        },
+        folder: folder.to_owned(),
+    })
+}
+
+pub(super) async fn refile_fulfilment_target(
+    seerr: &Seerr,
+    held: &RegisteredTarget,
+    filing: &TargetFiling,
+) -> Result<(), Failure> {
+    rewritten(
+        seerr,
+        held,
+        [
+            (PROFILE_ID, serde_json::json!(filing.profile.id)),
+            (PROFILE_NAME, serde_json::json!(filing.profile.name)),
+            (DIRECTORY, serde_json::json!(filing.folder)),
+        ],
+    )
+    .await
 }
 
 pub(super) async fn test_fulfilment_target(
