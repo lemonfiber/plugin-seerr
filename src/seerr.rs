@@ -11,7 +11,7 @@ use lemonfiber_ports::http::{Http, Method, Request, Response, JSON};
 use lemonfiber_ports::media::Kind;
 use lemonfiber_ports::service::{
     Credential, Failure, FulfilmentTarget, HouseholdRequest, IdentitySource, MediaServerLink,
-    Occasion, RegisteredTarget, Requesting, Requests, Telling,
+    Occasion, RegisteredTarget, Requesting, Requests, TargetFiling, Telling,
 };
 use serde::Deserialize;
 
@@ -436,6 +436,21 @@ impl Requests for Seerr {
         key: &str,
     ) -> Result<(), Failure> {
         targets::move_fulfilment_target(self, held, at, key).await
+    }
+
+    async fn fulfilment_target_filing(
+        &self,
+        held: &RegisteredTarget,
+    ) -> Result<TargetFiling, Failure> {
+        targets::fulfilment_target_filing(self, held).await
+    }
+
+    async fn refile_fulfilment_target(
+        &self,
+        held: &RegisteredTarget,
+        filing: &TargetFiling,
+    ) -> Result<(), Failure> {
+        targets::refile_fulfilment_target(self, held, filing).await
     }
 
     async fn test_fulfilment_target(

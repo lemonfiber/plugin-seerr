@@ -37,7 +37,7 @@ mod client {
     use lemonfiber_ports::service::{
         Address, Addressing, Approving, Asking, Credential, Endpoint, Failure, FulfilmentTarget,
         Holding, IdentitySource, Noticing, Occasion, Protocol, QualityProfile, Quota,
-        RegisteredTarget, RequestStatus, Requests, Telling,
+        RegisteredTarget, RequestStatus, Requests, TargetFiling, Telling,
     };
 
     use super::super::Seerr;
@@ -818,6 +818,80 @@ mod client {
             .move_fulfilment_target(&held, &at(), "k")
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn what_a_curator_fetches_at_is_read_and_rewritten_keeping_the_rest() {
+        let held = RegisteredTarget {
+            id: "2".to_owned(),
+            at: at(),
+            key: "s".to_owned(),
+            kind: Kind::Tv,
+        };
+        let listed = r#"[{"id":2,"hostname":"sonarr","name":"Mine","tags":[3],"activeProfileId":1,"activeProfileName":"Any","activeDirectory":"/data/tv"}]"#;
+        let (seerr, http) = scripted(vec![(200, listed)]);
+        assert_eq!(
+            seerr.fulfilment_target_filing(&held).await.ok(),
+            Some(TargetFiling {
+                profile: QualityProfile {
+                    id: 1,
+                    name: "Any".to_owned(),
+                },
+                folder: "/data/tv".to_owned(),
+            })
+        );
+        assert_eq!(
+            sent(&http)
+                .first()
+                .map(|(method, path, _)| (*method, path.clone())),
+            Some((Method::Get, "/api/v1/settings/sonarr".to_owned()))
+        );
+
+        let (seerr, http) = scripted(vec![(200, listed), (200, "{}")]);
+        let filing = TargetFiling {
+            profile: QualityProfile {
+                id: 6,
+                name: "HD".to_owned(),
+            },
+            folder: "/data/series".to_owned(),
+        };
+        assert!(seerr.refile_fulfilment_target(&held, &filing).await.is_ok());
+        let written = sent(&http);
+        assert_eq!(
+            written
+                .get(1)
+                .map(|(method, path, _)| (*method, path.clone())),
+            Some((Method::Put, "/api/v1/settings/sonarr/2".to_owned()))
+        );
+        let body: Option<serde_json::Value> = written
+            .get(1)
+            .and_then(|(_, _, body)| body.clone())
+            .and_then(|body| serde_json::from_str(&body).ok());
+        assert!(body.is_some_and(|body| body.pointer("/activeProfileId")
+            == Some(&serde_json::json!(6))
+            && body.pointer("/activeProfileName") == Some(&serde_json::json!("HD"))
+            && body.pointer("/activeDirectory") == Some(&serde_json::json!("/data/series"))
+            && body.pointer("/name") == Some(&serde_json::json!("Mine"))
+            && body.pointer("/hostname") == Some(&serde_json::json!("sonarr"))
+            && body.pointer("/tags/0") == Some(&serde_json::json!(3))
+            && body.get("id").is_none()));
+
+        for answers in [
+            vec![(200, r#"[{"id":3}]"#)],
+            vec![(200, r#"[{"id":2,"hostname":"sonarr"}]"#)],
+            vec![(200, "nope")],
+        ] {
+            assert!(scripted(answers)
+                .0
+                .fulfilment_target_filing(&held)
+                .await
+                .is_err());
+        }
+        let (gone, _) = scripted(vec![(200, r#"[{"id":3}]"#)]);
+        assert!(matches!(
+            gone.refile_fulfilment_target(&held, &filing).await,
+            Err(Failure::Refused { .. })
+        ));
     }
 
     #[tokio::test]
